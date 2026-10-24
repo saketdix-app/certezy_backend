@@ -326,8 +326,8 @@ mysql -u root -p your_database_name < schema.sql
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-username/certezy-backend.git
-cd certezy-backend
+git clone https://github.com/saketdix-app/certezy_backend.git
+cd certezy_backend
 
 # 2. Install dependencies
 npm install
