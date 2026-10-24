@@ -1,0 +1,1445 @@
+{
+  "apiTitle": "Certezy Backend API",
+  "version": "1.0.0",
+  "description": "Online Learning & Certification System API Documentation",
+  "baseUrl": "http://localhost:5000/api",
+  "modules": {
+    "auth": {
+      "name": "Authentication",
+      "description": "User authentication and authorization endpoints",
+      "endpoints": [
+        {
+          "method": "POST",
+          "endpoint": "/api/auth/register",
+          "description": "Student registration with email verification",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {
+            "name": { "type": "string", "required": true, "minLength": 2, "maxLength": 100 },
+            "email": { "type": "string", "required": true, "format": "email", "maxLength": 150 },
+            "password": { "type": "string", "required": true, "minLength": 8, "maxLength": 72, "pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])" }
+          },
+          "response": {
+            "success": true,
+            "message": "Registration successful",
+            "data": {
+              "user": {
+                "id": 1,
+                "name": "John Doe",
+                "email": "john@example.com",
+                "role": "student",
+                "is_verified": false,
+                "is_active": true,
+                "created_at": "2024-01-01T00:00:00.000Z"
+              }
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/auth/login",
+          "description": "Login for all user roles",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {
+            "email": { "type": "string", "required": true, "format": "email" },
+            "password": { "type": "string", "required": true }
+          },
+          "response": {
+            "success": true,
+            "message": "Login successful",
+            "data": {
+              "user": {
+                "id": 1,
+                "name": "John Doe",
+                "email": "john@example.com",
+                "role": "student"
+              },
+              "isFirstLogin": false
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/auth/refresh",
+          "description": "Refresh access token using refresh token",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Token refreshed"
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/auth/logout",
+          "description": "Logout user and clear tokens",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Logged out successfully"
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/auth/change-password",
+          "description": "Change password (first login or regular)",
+          "authRequired": true,
+          "roleRequired": "student/sub_admin/admin",
+          "requestBody": {
+            "currentPassword": { "type": "string", "required": true },
+            "newPassword": { "type": "string", "required": true, "minLength": 8, "maxLength": 72, "pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])" }
+          },
+          "response": {
+            "success": true,
+            "message": "Password changed successfully. Please login again."
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/auth/me",
+          "description": "Get current user profile",
+          "authRequired": true,
+          "roleRequired": "student/sub_admin/admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "User fetched",
+            "data": {
+              "user": {
+                "id": 1,
+                "name": "John Doe",
+                "email": "john@example.com",
+                "role": "student",
+                "avatar": "https://example.com/avatar.jpg",
+                "is_verified": true,
+                "is_active": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "categories": {
+      "name": "Categories",
+      "description": "Course category management with parent-child support",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/categories",
+          "description": "List all categories with hierarchy",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "name": "Programming",
+                "slug": "programming",
+                "parent_id": null,
+                "description": "Programming courses",
+                "course_count": 25,
+                "children": [
+                  {
+                    "id": 2,
+                    "name": "Web Development",
+                    "slug": "web-development",
+                    "parent_id": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/categories",
+          "description": "Create new category",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "name": { "type": "string", "required": true, "minLength": 2, "maxLength": 100 },
+            "slug": { "type": "string", "required": true, "maxLength": 100 },
+            "description": { "type": "string", "required": false, "maxLength": 500 },
+            "parent_id": { "type": "integer", "required": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Category created successfully",
+            "data": {
+              "id": 10,
+              "name": "Data Science",
+              "slug": "data-science",
+              "parent_id": 1,
+              "description": "Data science courses"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/categories/:id",
+          "description": "Update category",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "name": { "type": "string", "required": false, "minLength": 2, "maxLength": 100 },
+            "description": { "type": "string", "required": false, "maxLength": 500 },
+            "parent_id": { "type": "integer", "required": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Category updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/categories/:id",
+          "description": "Delete category",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Category deleted successfully"
+          }
+        }
+      ]
+    },
+    "courses": {
+      "name": "Courses",
+      "description": "Course management with sections, lessons, and enrollment",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/courses",
+          "description": "List all courses with filters and search",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "title": "Complete Web Development",
+                "slug": "complete-web-development",
+                "description": "Learn web development from scratch",
+                "price": 99.99,
+                "discount_price": 79.99,
+                "thumbnail": "https://example.com/thumb.jpg",
+                "category": "Web Development",
+                "instructor": "John Doe",
+                "rating": 4.5,
+                "review_count": 150,
+                "enrolled_count": 2500,
+                "duration_hours": 40,
+                "level": "beginner",
+                "status": "published",
+                "created_at": "2024-01-01T00:00:00.000Z"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "limit": 20,
+              "total": 100,
+              "totalPages": 5
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/courses/:slug",
+          "description": "Get single course details",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": {
+              "id": 1,
+              "title": "Complete Web Development",
+              "slug": "complete-web-development",
+              "description": "Complete course description...",
+              "price": 99.99,
+              "discount_price": 79.99,
+              "thumbnail": "https://example.com/thumb.jpg",
+              "preview_video": "https://example.com/preview.mp4",
+              "category": {
+                "id": 2,
+                "name": "Web Development",
+                "slug": "web-development"
+              },
+              "instructor": {
+                "id": 5,
+                "name": "John Doe",
+                "avatar": "https://example.com/instructor.jpg",
+                "bio": "Expert web developer"
+              },
+              "sections": [
+                {
+                  "id": 1,
+                  "title": "Introduction",
+                  "order": 1,
+                  "lessons": [
+                    {
+                      "id": 1,
+                      "title": "Course Overview",
+                      "type": "video",
+                      "duration": 300,
+                      "is_preview": true,
+                      "order": 1
+                    }
+                  ]
+                }
+              ],
+              "rating": 4.5,
+              "review_count": 150,
+              "enrolled_count": 2500,
+              "requirements": ["Basic computer skills"],
+              "what_you_learn": ["HTML", "CSS", "JavaScript"],
+              "status": "published"
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/courses",
+          "description": "Create new course",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": true, "maxLength": 200 },
+            "slug": { "type": "string", "required": true, "maxLength": 200 },
+            "description": { "type": "string", "required": true, "maxLength": 5000 },
+            "price": { "type": "number", "required": true, "min": 0 },
+            "discount_price": { "type": "number", "required": false, "min": 0 },
+            "category_id": { "type": "integer", "required": true },
+            "thumbnail": { "type": "string", "required": true },
+            "preview_video": { "type": "string", "required": false },
+            "requirements": { "type": "array", "required": false },
+            "what_you_learn": { "type": "array", "required": false },
+            "level": { "type": "string", "required": true, "enum": ["beginner", "intermediate", "advanced"] },
+            "status": { "type": "string", "required": true, "enum": ["draft", "published", "archived"] }
+          },
+          "response": {
+            "success": true,
+            "message": "Course created successfully",
+            "data": {
+              "id": 50,
+              "title": "New Course Title",
+              "slug": "new-course-title"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/courses/:id",
+          "description": "Update course",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": false, "maxLength": 200 },
+            "description": { "type": "string", "required": false, "maxLength": 5000 },
+            "price": { "type": "number", "required": false, "min": 0 },
+            "status": { "type": "string", "required": false, "enum": ["draft", "published", "archived"] }
+          },
+          "response": {
+            "success": true,
+            "message": "Course updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/courses/:id",
+          "description": "Delete course",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Course deleted successfully"
+          }
+        }
+      ]
+    },
+    "sections": {
+      "name": "Sections",
+      "description": "Course sections management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/sections/:courseId",
+          "description": "Get all sections for a course",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "course_id": 1,
+                "title": "Introduction",
+                "description": "Course introduction",
+                "order": 1,
+                "lessons_count": 5,
+                "total_duration": 1800,
+                "created_at": "2024-01-01T00:00:00.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/sections",
+          "description": "Create new section",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "course_id": { "type": "integer", "required": true },
+            "title": { "type": "string", "required": true, "maxLength": 200 },
+            "description": { "type": "string", "required": false, "maxLength": 1000 },
+            "order": { "type": "integer", "required": true, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Section created successfully",
+            "data": {
+              "id": 25,
+              "course_id": 1,
+              "title": "New Section"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/sections/:id",
+          "description": "Update section",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": false, "maxLength": 200 },
+            "description": { "type": "string", "required": false, "maxLength": 1000 },
+            "order": { "type": "integer", "required": false, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Section updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/sections/:id",
+          "description": "Delete section",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Section deleted successfully"
+          }
+        }
+      ]
+    },
+    "lessons": {
+      "name": "Lessons",
+      "description": "Course lessons management (video, article, quiz)",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/lessons/:sectionId",
+          "description": "Get all lessons for a section",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "section_id": 1,
+                "title": "Introduction to HTML",
+                "type": "video",
+                "content": "https://example.com/video.mp4",
+                "duration": 600,
+                "is_preview": true,
+                "order": 1,
+                "created_at": "2024-01-01T00:00:00.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/lessons",
+          "description": "Create new lesson",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "section_id": { "type": "integer", "required": true },
+            "title": { "type": "string", "required": true, "maxLength": 200 },
+            "type": { "type": "string", "required": true, "enum": ["video", "article", "quiz"] },
+            "content": { "type": "string", "required": true },
+            "duration": { "type": "integer", "required": false, "min": 0 },
+            "is_preview": { "type": "boolean", "required": false, "default": false },
+            "order": { "type": "integer", "required": true, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Lesson created successfully",
+            "data": {
+              "id": 100,
+              "section_id": 1,
+              "title": "New Lesson"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/lessons/:id",
+          "description": "Update lesson",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": false, "maxLength": 200 },
+            "content": { "type": "string", "required": false },
+            "is_preview": { "type": "boolean", "required": false },
+            "order": { "type": "integer", "required": false, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Lesson updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/lessons/:id",
+          "description": "Delete lesson",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Lesson deleted successfully"
+          }
+        }
+      ]
+    },
+    "tests": {
+      "name": "Tests",
+      "description": "Practice tests management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/tests/:id",
+          "description": "Get test details with questions",
+          "authRequired": true,
+          "roleRequired": "student/sub_admin/admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": {
+              "id": 1,
+              "title": "JavaScript Basics Test",
+              "description": "Test your JavaScript knowledge",
+              "type": "practice",
+              "duration_minutes": 30,
+              "passing_score": 70,
+              "total_questions": 20,
+              "course_id": 1,
+              "questions": [
+                {
+                  "id": 1,
+                  "question": "What is the output of console.log('Hello' + ' World')?",
+                  "type": "single_choice",
+                  "options": [
+                    { "id": 1, "text": "Hello World", "is_correct": true },
+                    { "id": 2, "text": "Hello", "is_correct": false },
+                    { "id": 3, "text": "World", "is_correct": false },
+                    { "id": 4, "text": "Error", "is_correct": false }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/tests",
+          "description": "Create new test",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": true, "maxLength": 200 },
+            "description": { "type": "string", "required": false, "maxLength": 1000 },
+            "type": { "type": "string", "required": true, "enum": ["practice", "mock", "diagnostic", "final"] },
+            "duration_minutes": { "type": "integer", "required": true, "min": 5, "max": 300 },
+            "passing_score": { "type": "integer", "required": true, "min": 0, "max": 100 },
+            "course_id": { "type": "integer", "required": true },
+            "questions": { "type": "array", "required": true }
+          },
+          "response": {
+            "success": true,
+            "message": "Test created successfully",
+            "data": {
+              "id": 25,
+              "title": "New Test"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/tests/:id",
+          "description": "Update test",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "title": { "type": "string", "required": false, "maxLength": 200 },
+            "description": { "type": "string", "required": false, "maxLength": 1000 },
+            "duration_minutes": { "type": "integer", "required": false, "min": 5, "max": 300 },
+            "passing_score": { "type": "integer", "required": false, "min": 0, "max": 100 }
+          },
+          "response": {
+            "success": true,
+            "message": "Test updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/tests/:id",
+          "description": "Delete test",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Test deleted successfully"
+          }
+        }
+      ]
+    },
+    "questions": {
+      "name": "Questions",
+      "description": "Test questions management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/questions/:testId",
+          "description": "Get all questions for a test",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "test_id": 1,
+                "question": "What is JavaScript?",
+                "type": "single_choice",
+                "explanation": "JavaScript is a programming language...",
+                "order": 1,
+                "options": [
+                  { "id": 1, "text": "Programming language", "is_correct": true },
+                  { "id": 2, "text": "Database", "is_correct": false }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/questions",
+          "description": "Create new question",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "test_id": { "type": "integer", "required": true },
+            "question": { "type": "string", "required": true, "maxLength": 1000 },
+            "type": { "type": "string", "required": true, "enum": ["single_choice", "multiple_choice", "true_false"] },
+            "explanation": { "type": "string", "required": false, "maxLength": 2000 },
+            "order": { "type": "integer", "required": true, "min": 1 },
+            "options": { "type": "array", "required": true, "minItems": 2 }
+          },
+          "response": {
+            "success": true,
+            "message": "Question created successfully",
+            "data": {
+              "id": 150,
+              "test_id": 1,
+              "question": "New question"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/questions/:id",
+          "description": "Update question",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "question": { "type": "string", "required": false, "maxLength": 1000 },
+            "explanation": { "type": "string", "required": false, "maxLength": 2000 },
+            "order": { "type": "integer", "required": false, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Question updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/questions/:id",
+          "description": "Delete question",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Question deleted successfully"
+          }
+        }
+      ]
+    },
+    "options": {
+      "name": "Options",
+      "description": "Question options management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/options/:questionId",
+          "description": "Get all options for a question",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "question_id": 1,
+                "text": "Option A",
+                "is_correct": true,
+                "order": 1
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/options",
+          "description": "Create new option",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "question_id": { "type": "integer", "required": true },
+            "text": { "type": "string", "required": true, "maxLength": 500 },
+            "is_correct": { "type": "boolean", "required": true },
+            "order": { "type": "integer", "required": true, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Option created successfully",
+            "data": {
+              "id": 200,
+              "question_id": 1,
+              "text": "New Option"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/options/:id",
+          "description": "Update option",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "text": { "type": "string", "required": false, "maxLength": 500 },
+            "is_correct": { "type": "boolean", "required": false },
+            "order": { "type": "integer", "required": false, "min": 1 }
+          },
+          "response": {
+            "success": true,
+            "message": "Option updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/options/:id",
+          "description": "Delete option",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Option deleted successfully"
+          }
+        }
+      ]
+    },
+    "attempts": {
+      "name": "Test Attempts",
+      "description": "Test attempt management and submission",
+      "endpoints": [
+        {
+          "method": "POST",
+          "endpoint": "/api/attempts/:testId/start",
+          "description": "Start a new test attempt",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Test started successfully",
+            "data": {
+              "attempt_id": 123,
+              "test_id": 1,
+              "started_at": "2024-01-01T10:00:00.000Z",
+              "expires_at": "2024-01-01T10:30:00.000Z",
+              "questions": [
+                {
+                  "id": 1,
+                  "question": "What is JavaScript?",
+                  "type": "single_choice",
+                  "options": [
+                    { "id": 1, "text": "Programming language" },
+                    { "id": 2, "text": "Database" }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/attempts/submit",
+          "description": "Submit completed test attempt",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "attempt_id": { "type": "integer", "required": true },
+            "answers": { "type": "array", "required": true },
+            "completed_at": { "type": "string", "required": false, "format": "date-time" }
+          },
+          "response": {
+            "success": true,
+            "message": "Test submitted successfully",
+            "data": {
+              "attempt_id": 123,
+              "score": 85,
+              "total_questions": 20,
+              "correct_answers": 17,
+              "percentage": 85,
+              "passed": true,
+              "time_taken_minutes": 25,
+              "completed_at": "2024-01-01T10:25:00.000Z"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/attempts/:testId/history",
+          "description": "Get attempt history for a test",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 123,
+                "test_id": 1,
+                "score": 85,
+                "percentage": 85,
+                "passed": true,
+                "time_taken_minutes": 25,
+                "attempted_at": "2024-01-01T10:00:00.000Z",
+                "completed_at": "2024-01-01T10:25:00.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/attempts/:attemptId/detail",
+          "description": "Get detailed attempt results",
+          "authRequired": true,
+          "roleRequired": "student/sub_admin/admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": {
+              "attempt": {
+                "id": 123,
+                "score": 85,
+                "percentage": 85,
+                "passed": true,
+                "time_taken_minutes": 25
+              },
+              "answers": [
+                {
+                  "question_id": 1,
+                  "selected_option_id": 1,
+                  "is_correct": true,
+                  "explanation": "JavaScript is indeed a programming language"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "enrollments": {
+      "name": "Enrollments",
+      "description": "Student course enrollment management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/enrollments",
+          "description": "Get my enrolled courses",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "course_id": 1,
+                "student_id": 10,
+                "enrolled_at": "2024-01-01T00:00:00.000Z",
+                "expires_at": "2025-01-01T00:00:00.000Z",
+                "progress_percentage": 65,
+                "certificate_earned": false,
+                "course": {
+                  "id": 1,
+                  "title": "Complete Web Development",
+                  "slug": "complete-web-development",
+                  "thumbnail": "https://example.com/thumb.jpg",
+                  "instructor": "John Doe"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/enrollments",
+          "description": "Enroll in a course",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "course_id": { "type": "integer", "required": true },
+            "payment_id": { "type": "integer", "required": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Enrolled successfully",
+            "data": {
+              "enrollment_id": 500,
+              "course_id": 1,
+              "enrolled_at": "2024-01-01T00:00:00.000Z"
+            }
+          }
+        }
+      ]
+    },
+    "progress": {
+      "name": "Progress",
+      "description": "Course progress tracking",
+      "endpoints": [
+        {
+          "method": "POST",
+          "endpoint": "/api/progress",
+          "description": "Update lesson progress",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "lesson_id": { "type": "integer", "required": true },
+            "watched_seconds": { "type": "integer", "required": true, "min": 0 },
+            "completed": { "type": "boolean", "required": true, "default": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Progress updated successfully",
+            "data": {
+              "lesson_id": 1,
+              "progress_percentage": 100,
+              "completed_at": "2024-01-01T10:30:00.000Z"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/progress/:courseId",
+          "description": "Get course progress",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": {
+              "course_id": 1,
+              "overall_progress": 65,
+              "completed_lessons": 13,
+              "total_lessons": 20,
+              "sections": [
+                {
+                  "section_id": 1,
+                  "title": "Introduction",
+                  "progress_percentage": 100,
+                  "completed_lessons": 5,
+                  "total_lessons": 5
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "payments": {
+      "name": "Payments",
+      "description": "Payment processing with Razorpay and PayPal",
+      "endpoints": [
+        {
+          "method": "POST",
+          "endpoint": "/api/payments/create-order",
+          "description": "Create payment order (Razorpay/PayPal)",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "course_id": { "type": "integer", "required": true },
+            "amount": { "type": "number", "required": true, "min": 0 },
+            "currency": { "type": "string", "required": false, "default": "USD", "enum": ["USD", "INR"] },
+            "provider": { "type": "string", "required": true, "enum": ["razorpay", "paypal"] },
+            "discount_token": { "type": "string", "required": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Order created successfully",
+            "data": {
+              "order_id": "order_123",
+              "provider": "razorpay",
+              "amount": 99.99,
+              "currency": "USD",
+              "razorpay_order_id": "razorpay_order_123",
+              "paypal_order_id": null
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/payments/verify",
+          "description": "Verify and confirm payment",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "order_id": { "type": "string", "required": true },
+            "provider": { "type": "string", "required": true, "enum": ["razorpay", "paypal"] },
+            "payment_id": { "type": "string", "required": true },
+            "signature": { "type": "string", "required": true }
+          },
+          "response": {
+            "success": true,
+            "message": "Payment verified successfully",
+            "data": {
+              "payment_id": "pay_123",
+              "status": "success",
+              "enrollment_created": true,
+              "invoice_url": "https://example.com/invoice.pdf"
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/payments/webhook",
+          "description": "Payment gateway webhook",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Webhook processed successfully"
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/payments/history",
+          "description": "Get payment history",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "course_id": 1,
+                "amount": 99.99,
+                "currency": "USD",
+                "provider": "razorpay",
+                "status": "success",
+                "transaction_id": "razorpay_pay_123",
+                "paid_at": "2024-01-01T10:00:00.000Z",
+                "course": {
+                  "title": "Complete Web Development",
+                  "thumbnail": "https://example.com/thumb.jpg"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "discounts": {
+      "name": "Discounts",
+      "description": "Discount link management",
+      "endpoints": [
+        {
+          "method": "POST",
+          "endpoint": "/api/discounts",
+          "description": "Create discount link (admin)",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "student_email": { "type": "string", "required": true, "format": "email" },
+            "course_id": { "type": "integer", "required": true },
+            "original_price": { "type": "number", "required": true, "min": 0 },
+            "discount_price": { "type": "number", "required": true, "min": 0 },
+            "expires_hours": { "type": "integer", "required": true, "min": 1, "max": 168 }
+          },
+          "response": {
+            "success": true,
+            "message": "Discount link created successfully",
+            "data": {
+              "id": 50,
+              "token": "discount_token_123",
+              "student_email": "student@example.com",
+              "course_id": 1,
+              "original_price": 99.99,
+              "discount_price": 79.99,
+              "expires_at": "2024-01-02T10:00:00.000Z"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/discounts/verify/:token",
+          "description": "Verify discount token before checkout",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Discount token verified",
+            "data": {
+              "valid": true,
+              "course": {
+                "id": 1,
+                "title": "Complete Web Development",
+                "original_price": 99.99,
+                "discount_price": 79.99
+              },
+              "expires_at": "2024-01-02T10:00:00.000Z"
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/discounts",
+          "description": "List all discount links (admin)",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 50,
+                "token": "discount_token_123",
+                "student_email": "student@example.com",
+                "course": {
+                  "id": 1,
+                  "title": "Complete Web Development"
+                },
+                "original_price": 99.99,
+                "discount_price": 79.99,
+                "is_used": false,
+                "expires_at": "2024-01-02T10:00:00.000Z",
+                "created_at": "2024-01-01T10:00:00.000Z"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "certificates": {
+      "name": "Certificates",
+      "description": "Course completion certificates",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/certificates",
+          "description": "Get my certificates",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "course_id": 1,
+                "student_id": 10,
+                "certificate_number": "CERT-2024-001",
+                "issue_date": "2024-01-01T00:00:00.000Z",
+                "pdf_url": "https://example.com/certificates/CERT-2024-001.pdf",
+                "course": {
+                  "title": "Complete Web Development",
+                  "instructor": "John Doe"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/certificates",
+          "description": "Generate certificate (auto/manual)",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {
+            "student_id": { "type": "integer", "required": true },
+            "course_id": { "type": "integer", "required": true }
+          },
+          "response": {
+            "success": true,
+            "message": "Certificate generated successfully",
+            "data": {
+              "id": 25,
+              "certificate_number": "CERT-2024-025",
+              "pdf_url": "https://example.com/certificates/CERT-2024-025.pdf"
+            }
+          }
+        }
+      ]
+    },
+    "reviews": {
+      "name": "Reviews",
+      "description": "Course reviews and ratings",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/reviews/:courseId",
+          "description": "Get course reviews",
+          "authRequired": false,
+          "roleRequired": "public",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 1,
+                "course_id": 1,
+                "student_id": 10,
+                "rating": 5,
+                "review": "Excellent course! Very comprehensive.",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "student": {
+                  "name": "Jane Doe",
+                  "avatar": "https://example.com/avatar.jpg"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/reviews",
+          "description": "Submit course review",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "course_id": { "type": "integer", "required": true },
+            "rating": { "type": "integer", "required": true, "min": 1, "max": 5 },
+            "review": { "type": "string", "required": false, "maxLength": 1000 }
+          },
+          "response": {
+            "success": true,
+            "message": "Review submitted successfully",
+            "data": {
+              "id": 200,
+              "course_id": 1,
+              "rating": 5,
+              "review": "Great course!"
+            }
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/reviews/:id",
+          "description": "Update review",
+          "authRequired": true,
+          "roleRequired": "student",
+          "requestBody": {
+            "rating": { "type": "integer", "required": false, "min": 1, "max": 5 },
+            "review": { "type": "string", "required": false, "maxLength": 1000 }
+          },
+          "response": {
+            "success": true,
+            "message": "Review updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/reviews/:id",
+          "description": "Delete review",
+          "authRequired": true,
+          "roleRequired": "student/admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Review deleted successfully"
+          }
+        }
+      ]
+    },
+    "admin": {
+      "name": "Admin Permissions",
+      "description": "Admin panel and sub-admin management",
+      "endpoints": [
+        {
+          "method": "GET",
+          "endpoint": "/api/admin/dashboard",
+          "description": "Get admin dashboard stats",
+          "authRequired": true,
+          "roleRequired": "admin/sub_admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": {
+              "total_users": 5000,
+              "total_courses": 50,
+              "total_enrollments": 10000,
+              "total_revenue": 500000,
+              "recent_enrollments": [
+                {
+                  "id": 1,
+                  "student_name": "John Doe",
+                  "course_title": "Web Development",
+                  "enrolled_at": "2024-01-01T00:00:00.000Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "/api/admin/sub-admins",
+          "description": "Create sub-admin with permissions",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {
+            "name": { "type": "string", "required": true, "maxLength": 100 },
+            "email": { "type": "string", "required": true, "format": "email" },
+            "permissions": { "type": "array", "required": true, "items": { "type": "string", "enum": ["manage_courses", "manage_users", "view_payments", "send_discounts"] } }
+          },
+          "response": {
+            "success": true,
+            "message": "Sub-admin created successfully",
+            "data": {
+              "id": 25,
+              "name": "Sub Admin",
+              "email": "subadmin@example.com",
+              "role": "sub_admin",
+              "permissions": ["manage_courses", "manage_users"]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "/api/admin/sub-admins",
+          "description": "List all sub-admins",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "data": [
+              {
+                "id": 25,
+                "name": "Sub Admin",
+                "email": "subadmin@example.com",
+                "role": "sub_admin",
+                "is_active": true,
+                "permissions": ["manage_courses", "manage_users"],
+                "created_at": "2024-01-01T00:00:00.000Z"
+              }
+            ]
+          }
+        },
+        {
+          "method": "PUT",
+          "endpoint": "/api/admin/sub-admins/:id",
+          "description": "Update sub-admin permissions",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {
+            "permissions": { "type": "array", "required": true, "items": { "type": "string", "enum": ["manage_courses", "manage_users", "view_payments", "send_discounts"] } },
+            "is_active": { "type": "boolean", "required": false }
+          },
+          "response": {
+            "success": true,
+            "message": "Sub-admin updated successfully"
+          }
+        },
+        {
+          "method": "DELETE",
+          "endpoint": "/api/admin/sub-admins/:id",
+          "description": "Remove sub-admin",
+          "authRequired": true,
+          "roleRequired": "admin",
+          "requestBody": {},
+          "response": {
+            "success": true,
+            "message": "Sub-admin removed successfully"
+          }
+        }
+      ]
+    }
+  },
+  "authentication": {
+    "type": "JWT Bearer Token",
+    "header": "Authorization: Bearer <token>",
+    "cookie": "accessToken (httpOnly)",
+    "refreshToken": "refreshToken (httpOnly)"
+  },
+  "responses": {
+    "success": {
+      "format": {
+        "success": true,
+        "message": "string",
+        "data": "object|array",
+        "pagination": "object (optional)"
+      }
+    },
+    "error": {
+      "format": {
+        "success": false,
+        "message": "string",
+        "errors": "array (validation errors only)",
+        "stack": "string (development only)"
+      }
+    }
+  },
+  "rateLimits": {
+    "login": "5 requests per 15 minutes",
+    "register": "10 requests per hour",
+    "api": "100 requests per minute"
+  }
+}

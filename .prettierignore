@@ -1,0 +1,6 @@
+node_modules
+dist
+package-lock.json
+*.md
+api-docs.json
+certezy-api-collection.json
