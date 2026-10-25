@@ -153,8 +153,9 @@ const updateCourse = async (id, body) => {
   const description = body.description ?? current.description
   const short_desc = body.short_desc ?? current.short_desc
   const category_id = body.category_id ?? current.category_id
-  const thumbnail = body.thumbnail ?? current.thumbnail
-  const preview_video = body.preview_video ?? current.preview_video
+  // Media can be cleared from the admin UI: null/'' removes it, undefined keeps it
+  const thumbnail = body.thumbnail !== undefined ? body.thumbnail || null : current.thumbnail
+  const preview_video = body.preview_video !== undefined ? body.preview_video || null : current.preview_video
   const price = body.price ?? current.price
   const level = body.level ?? current.level
   const language = body.language ?? current.language

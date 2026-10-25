@@ -2,6 +2,7 @@
 
 import PDFDocument from 'pdfkit'
 import { uploadFile } from './upload.js'
+import env from '../config/env.js'
 
 // ── Generate Invoice PDF + Upload to Spaces ────────────────────────────────
 const generateInvoice = ({
@@ -26,7 +27,7 @@ const generateInvoice = ({
         try {
           const buffer = Buffer.concat(chunks)
 
-          // DigitalOcean Spaces pe upload karo
+          // Upload to S3
           // Key format: invoices/INV-2024-XXXX.pdf
           const key = `invoices/${invoiceNumber}.pdf`
           const url = await uploadFile({
@@ -102,7 +103,7 @@ const generateInvoice = ({
         .font('Helvetica')
         .fillColor('grey')
         .text('Thank you for your purchase!', { align: 'center' })
-        .text('For support: support@certezy.com', { align: 'center' })
+        .text(`Support: ${env.supportEmail} | ${env.supportPhone}`, { align: 'center' })
 
       doc.end()
     } catch (err) {

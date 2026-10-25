@@ -13,4 +13,15 @@ const getPresignedUrl = async (req, res, next) => {
   }
 }
 
-export { getPresignedUrl }
+// ── GET /upload/status ─────────────────────────────────────────────────
+// Lets an admin confirm S3 is reachable without uploading anything.
+const getStatus = async (req, res, next) => {
+  try {
+    const data = await service.getStatus()
+    return success(res, { message: data.ok ? 'Storage OK' : 'Storage not reachable', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export { getPresignedUrl, getStatus }

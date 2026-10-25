@@ -18,4 +18,7 @@ router.post(
   controller.getPresignedUrl
 )
 
+// Storage health + upload limits (admin only)
+router.get('/status', authenticate, role('admin', 'sub_admin'), controller.getStatus)
+
 export default router

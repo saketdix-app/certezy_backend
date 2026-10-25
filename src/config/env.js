@@ -54,6 +54,8 @@ const env = {
   NODE_ENV,
   isProd,
   appName: process.env.APP_NAME || 'Certezy',
+  supportEmail: process.env.SUPPORT_EMAIL || 'contact@certezy.com',
+  supportPhone: process.env.SUPPORT_PHONE || '+1 (866) 558-9561',
 
   // Database
   db: {
@@ -110,20 +112,21 @@ const env = {
     from: process.env.MAIL_FROM,
   },
 
-  // AWS S3
+  // AWS S3 — admin uploads, certificates and invoices
+  // Credentials are optional: when AWS_ACCESS_KEY_ID is empty the SDK uses the
+  // default chain (EC2 instance role, ~/.aws, env), which is preferred on EC2.
   s3: {
-    accessKey: process.env.AWS_ACCESS_KEY_ID,
-    secretKey: process.env.AWS_SECRET_ACCESS_KEY,
+    accessKey: process.env.AWS_ACCESS_KEY_ID || undefined,
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY || undefined,
     region: process.env.AWS_REGION || 'ap-south-1',
     bucket: process.env.AWS_BUCKET_NAME,
-  },
-
-  // DigitalOcean Spaces
-  spaces: {
-    region: process.env.SPACES_REGION,
-    accessKey: process.env.SPACES_ACCESS_KEY,
-    secretKey: process.env.SPACES_SECRET_KEY,
-    bucket: process.env.SPACES_BUCKET,
+    // Public base URL files are served from (CloudFront or custom domain).
+    // Defaults to https://<bucket>.s3.<region>.amazonaws.com
+    publicUrl: (process.env.S3_PUBLIC_URL || '').replace(/\/$/, ''),
+    // Only for legacy buckets that still use object ACLs. New buckets have
+    // ACLs disabled and reject uploads that send one.
+    useAcl: process.env.S3_USE_ACL === 'true',
+    uploadPrefix: (process.env.S3_UPLOAD_PREFIX || 'uploads').replace(/^\/|\/$/g, ''),
   },
 
   // Payments
