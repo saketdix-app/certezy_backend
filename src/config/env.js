@@ -53,9 +53,10 @@ const env = {
   PORT: toInt(process.env.PORT, 5000),
   NODE_ENV,
   isProd,
-  appName: process.env.APP_NAME || 'Certezy',
-  supportEmail: process.env.SUPPORT_EMAIL || 'contact@certezy.com',
-  supportPhone: process.env.SUPPORT_PHONE || '+1 (866) 558-9561',
+  // Brand and contact details are fixed so a stale .env can't misspell them
+  appName: 'Certezy',
+  supportEmail: 'contact@certezy.com',
+  supportPhone: 'India +91 98935 96975 | US +1 (866) 558-9561',
 
   // Database
   db: {
