@@ -6,7 +6,7 @@ import { pool } from './db.js'
 
 const columnInfo = async (table, column) => {
   const [rows] = await pool.query(
-    `SELECT COLUMN_TYPE, IS_NULLABLE
+    `SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
        FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
     [table, column]
@@ -52,6 +52,9 @@ const tableExists = async (table) => {
   return rows.length > 0
 }
 
+// Values the lessons.type column must accept (see LESSON_TYPES in validate.js)
+const LESSON_TYPES = ['video', 'text', 'article', 'pdf', 'quiz']
+
 const STEPS = [
   {
     name: 'contacts table (contact form enquiries)',
@@ -73,6 +76,22 @@ const STEPS = [
           INDEX idx_contacts_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
+      return true
+    },
+  },
+  {
+    name: "lessons.type accepts 'text' and 'pdf' lessons",
+    run: async () => {
+      const col = await columnInfo('lessons', 'type')
+      if (!col || !col.COLUMN_TYPE.toLowerCase().startsWith('enum(')) return false // VARCHAR: nothing to do
+      const current = [...col.COLUMN_TYPE.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'"))
+      const missing = LESSON_TYPES.filter((t) => !current.includes(t))
+      if (!missing.length) return false
+      const values = [...current, ...missing].map((v) => pool.escape(v)).join(', ')
+      const nullable = col.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
+      const def =
+        col.COLUMN_DEFAULT != null ? ` DEFAULT ${pool.escape(col.COLUMN_DEFAULT.replace(/^'|'$/g, ''))}` : ''
+      await pool.query(`ALTER TABLE lessons MODIFY \`type\` ENUM(${values}) ${nullable}${def}`)
       return true
     },
   },

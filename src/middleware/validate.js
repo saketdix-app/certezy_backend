@@ -21,6 +21,10 @@ const validate = (schema) => {
   }
 }
 
+// Lesson types the admin can create. 'text' and 'article' are both written
+// lessons (the admin UI uses 'text'); 'pdf' is a PDF document stored on S3.
+const LESSON_TYPES = ['video', 'text', 'article', 'pdf', 'quiz']
+
 const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().max(150).lowercase().required(),
@@ -126,7 +130,9 @@ const updateSectionSchema = Joi.object({
 const createLessonSchema = Joi.object({
   section_id: Joi.number().integer().required(),
   title: Joi.string().min(2).max(200).required(),
-  type: Joi.string().valid('video', 'article', 'quiz').optional(),
+  type: Joi.string()
+    .valid(...LESSON_TYPES)
+    .optional(),
   content: Joi.string().optional(),
   duration: Joi.number().integer().optional(),
   order_num: Joi.number().integer().optional(),
@@ -135,7 +141,9 @@ const createLessonSchema = Joi.object({
 
 const updateLessonSchema = Joi.object({
   title: Joi.string().min(2).max(200).optional(),
-  type: Joi.string().valid('video', 'article', 'quiz').optional(),
+  type: Joi.string()
+    .valid(...LESSON_TYPES)
+    .optional(),
   content: Joi.string().optional(),
   duration: Joi.number().integer().optional(),
   order_num: Joi.number().integer().optional(),
