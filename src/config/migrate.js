@@ -20,7 +20,62 @@ const addColumnIfMissing = async (table, column, definition) => {
   return true
 }
 
+// Every table the API reads or writes. Missing ones are reported at startup.
+const REQUIRED_TABLES = [
+  'users',
+  'refresh_tokens',
+  'oauth_accounts',
+  'admin_permissions',
+  'categories',
+  'courses',
+  'sections',
+  'lessons',
+  'lesson_progress',
+  'tests',
+  'questions',
+  'options',
+  'test_attempts',
+  'attempt_answers',
+  'enrollments',
+  'payments',
+  'discount_links',
+  'certificates',
+  'reviews',
+  'contacts',
+]
+
+const tableExists = async (table) => {
+  const [rows] = await pool.query(
+    'SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+    [table]
+  )
+  return rows.length > 0
+}
+
 const STEPS = [
+  {
+    name: 'contacts table (contact form enquiries)',
+    run: async () => {
+      if (await tableExists('contacts')) return false
+      await pool.query(`
+        CREATE TABLE contacts (
+          id         INT AUTO_INCREMENT PRIMARY KEY,
+          user_id    INT NULL,
+          name       VARCHAR(150) NOT NULL,
+          email      VARCHAR(255) NOT NULL,
+          phone      VARCHAR(30)  NULL,
+          subject    VARCHAR(200) NOT NULL,
+          message    TEXT         NOT NULL,
+          status     VARCHAR(20)  NOT NULL DEFAULT 'new',
+          created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_contacts_status (status),
+          INDEX idx_contacts_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
   {
     name: 'enrollments.payment_id nullable (free / admin-assigned enrollments)',
     run: async () => {
@@ -57,6 +112,19 @@ const runMigrations = async () => {
     } catch (err) {
       console.error(`⚠️  Migration failed (${step.name}): ${err.message}`)
     }
+  }
+
+  // Report anything else the code expects but the database doesn't have
+  try {
+    const missing = []
+    for (const table of REQUIRED_TABLES) {
+      if (!(await tableExists(table))) missing.push(table)
+    }
+    if (missing.length) {
+      console.error(`⚠️  Missing database tables: ${missing.join(', ')} — features using them will fail`)
+    }
+  } catch (err) {
+    console.error(`⚠️  Schema check failed: ${err.message}`)
   }
 }
 
