@@ -259,6 +259,9 @@ const hasEnrollments = (id) => pool.query('SELECT id FROM enrollments WHERE cour
 const incrementEnrolledCount = (id) =>
   pool.query('UPDATE courses SET enrolled_count = enrolled_count + 1 WHERE id = ?', [id])
 
+const decrementEnrolledCount = (id) =>
+  pool.query('UPDATE courses SET enrolled_count = GREATEST(enrolled_count - 1, 0) WHERE id = ?', [id])
+
 // ── Update rating (called after review submit) ────────────────────────────
 const updateRating = (id, { rating_avg, rating_count }) =>
   pool.query('UPDATE courses SET rating_avg = ?, rating_count = ? WHERE id = ?', [
@@ -288,6 +291,7 @@ export {
   deleteCourseById,
   hasEnrollments,
   incrementEnrolledCount,
+  decrementEnrolledCount,
   updateRating,
   updateCourseMeta,
 }

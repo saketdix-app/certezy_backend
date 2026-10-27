@@ -41,4 +41,60 @@ const getAllEnrollments = async (req, res, next) => {
   }
 }
 
-export { getMyEnrollments, checkEnrollment, getAllEnrollments }
+// ── POST /enrollments/admin/assign — assign courses free of cost ──────────
+const assignCourses = async (req, res, next) => {
+  try {
+    const { user_id, course_ids, note } = req.body
+    const result = await service.assignCourses({ user_id, course_ids, note, assigned_by: req.user.id })
+    const n = result.assigned.length
+    return success(res, {
+      statusCode: n ? 201 : 200,
+      message: n
+        ? `${n} course${n > 1 ? 's' : ''} assigned to ${result.user.name}`
+        : 'No new courses assigned',
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /enrollments/admin/user/:userId — one user's courses ──────────────
+const getUserEnrollments = async (req, res, next) => {
+  try {
+    const enrollments = await service.getUserEnrollments(req.params.userId)
+    return success(res, { message: 'User enrollments fetched', data: { enrollments } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── DELETE /enrollments/admin/:id — revoke a free enrollment ──────────────
+const revokeEnrollment = async (req, res, next) => {
+  try {
+    const data = await service.revokeEnrollment(req.params.id)
+    return success(res, { message: 'Course access revoked', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /enrollments/admin/courses — courses that can be assigned ─────────
+const getAssignableCourses = async (req, res, next) => {
+  try {
+    const courses = await service.getAssignableCourses({ search: req.query.search })
+    return success(res, { message: 'Courses fetched', data: { courses } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export {
+  getMyEnrollments,
+  checkEnrollment,
+  getAllEnrollments,
+  assignCourses,
+  getUserEnrollments,
+  revokeEnrollment,
+  getAssignableCourses,
+}

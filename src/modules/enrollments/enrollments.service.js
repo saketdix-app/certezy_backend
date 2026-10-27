@@ -2,6 +2,14 @@
 
 import * as queries from './enrollments.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
+import * as authQueries from '../auth/auth.queries.js'
+import { sendCourseAssignedJob } from '../../jobs/emailQueue.js'
+
+const httpError = (message, statusCode) => {
+  const err = new Error(message)
+  err.statusCode = statusCode
+  return err
+}
 
 // ── Get my enrolled courses (student) ─────────────────────────────────────
 const getMyEnrollments = async (user_id) => {
@@ -84,4 +92,98 @@ const getAllEnrollments = async ({ page = 1, limit = 20, course_id, user_id } = 
   }
 }
 
-export { getMyEnrollments, checkEnrollment, createEnrollment, updateProgress, getAllEnrollments }
+// ── Admin — assign courses free of cost (₹0, no payment) ──────────────────
+// Returns which courses were assigned and which were skipped (and why).
+const assignCourses = async ({ user_id, course_ids, note, assigned_by }) => {
+  const user = await authQueries.findById(user_id)
+  if (!user) throw httpError('User not found', 404)
+  if (user.role !== 'student') throw httpError('Courses can only be assigned to student accounts', 400)
+  if (!user.is_active) throw httpError('This user account is deactivated', 400)
+
+  const uniqueIds = [...new Set(course_ids.map(Number))]
+  const assigned = []
+  const skipped = []
+
+  for (const course_id of uniqueIds) {
+    const [courseRows] = await courseQueries.checkCourseExists(course_id)
+    if (!courseRows.length) {
+      skipped.push({ course_id, reason: 'Course not found or archived' })
+      continue
+    }
+    if (await checkEnrollment(user_id, course_id)) {
+      skipped.push({ course_id, reason: 'Already enrolled' })
+      continue
+    }
+    try {
+      const [result] = await queries.createAssignedEnrollment({ user_id, course_id, assigned_by, note })
+      await courseQueries.incrementEnrolledCount(course_id)
+      assigned.push({ course_id, enrollment_id: result.insertId })
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') {
+        skipped.push({ course_id, reason: 'Already enrolled' })
+        continue
+      }
+      if (err.code === 'ER_BAD_FIELD_ERROR' || err.code === 'ER_BAD_NULL_ERROR') {
+        throw httpError(
+          'Database is not ready for free assignments yet. Restart the backend so it can apply its migration.',
+          500
+        )
+      }
+      throw err
+    }
+  }
+
+  // Notify the student (best effort — never blocks the assignment)
+  if (assigned.length) {
+    const enrollments = await getUserEnrollments(user_id)
+    const titles = enrollments
+      .filter((e) => assigned.some((a) => a.course_id === e.course_id))
+      .map((e) => e.course_title)
+    sendCourseAssignedJob({ to: user.email, name: user.name, courseTitles: titles }).catch((err) =>
+      console.error('Course-assigned email not queued:', err.message)
+    )
+  }
+
+  return { user: { id: user.id, name: user.name, email: user.email }, assigned, skipped }
+}
+
+// ── Admin — a user's enrollments, with how each was granted ───────────────
+const getUserEnrollments = async (user_id) => {
+  const [rows] = await queries.getUserEnrollmentsDetailed(user_id)
+  return rows
+}
+
+// ── Admin — revoke a free (admin-assigned) enrollment ─────────────────────
+const revokeEnrollment = async (enrollment_id) => {
+  const [rows] = await queries.getEnrollmentById(enrollment_id)
+  const enrollment = rows[0]
+  if (!enrollment) throw httpError('Enrollment not found', 404)
+  if (enrollment.source !== 'admin') {
+    throw httpError(
+      'Only free (admin-assigned) enrollments can be revoked here. Paid enrollments need a refund.',
+      400
+    )
+  }
+
+  await queries.deleteEnrollmentById(enrollment_id)
+  await courseQueries.decrementEnrolledCount(enrollment.course_id)
+  return { id: enrollment.id, user_id: enrollment.user_id, course_id: enrollment.course_id }
+}
+
+// ── Admin — courses available for assignment ──────────────────────────────
+const getAssignableCourses = async ({ search } = {}) => {
+  const [rows] = await queries.getAssignableCourses({ search })
+  return rows
+}
+
+export {
+  getMyEnrollments,
+  checkEnrollment,
+  createEnrollment,
+  updateProgress,
+  getAllEnrollments,
+  assignCourses,
+  getUserEnrollments,
+  revokeEnrollment,
+  getAssignableCourses,
+}

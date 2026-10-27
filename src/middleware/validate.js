@@ -230,6 +230,11 @@ const createSubAdminSchema = Joi.object({
 const schemas = {
   register: registerSchema,
   createSubAdmin: createSubAdminSchema,
+  assignCourses: Joi.object({
+    user_id: Joi.number().integer().positive().required(),
+    course_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).required(),
+    note: Joi.string().trim().max(255).allow('', null).optional(),
+  }),
   generatePresignedUrl: Joi.object({
     fileName: Joi.string().required().max(255),
     fileType: Joi.string().required().max(100),

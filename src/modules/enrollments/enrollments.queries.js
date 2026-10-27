@@ -6,7 +6,7 @@ import { pool } from '../../config/db.js'
 const getEnrollmentsByUserId = (user_id) =>
   pool.query(
     `SELECT
-       e.id, e.user_id, e.course_id, e.payment_id,
+       e.id, e.user_id, e.course_id, e.payment_id, e.source,
        e.enrolled_at, e.completed_at, e.progress,
        c.title, c.slug, c.thumbnail, c.level, c.language,
        c.total_lessons, c.total_duration, c.certificate_eligible,
@@ -37,6 +37,51 @@ const createEnrollment = ({ user_id, course_id, payment_id }) =>
      VALUES (?, ?, ?)`,
     [user_id, course_id, payment_id]
   )
+
+// ── Create a free enrollment assigned by an admin / sub-admin ─────────────
+const createAssignedEnrollment = ({ user_id, course_id, assigned_by, note }) =>
+  pool.query(
+    `INSERT INTO enrollments (user_id, course_id, payment_id, source, assigned_by, note)
+     VALUES (?, ?, NULL, 'admin', ?, ?)`,
+    [user_id, course_id, assigned_by, note || null]
+  )
+
+// ── Admin — one user's enrollments with how they were granted ─────────────
+const getUserEnrollmentsDetailed = (user_id) =>
+  pool.query(
+    `SELECT
+       e.id, e.user_id, e.course_id, e.payment_id, e.source, e.note,
+       e.enrolled_at, e.completed_at, e.progress,
+       c.title AS course_title, c.slug AS course_slug, c.thumbnail, c.price, c.status AS course_status,
+       a.name AS assigned_by_name
+     FROM enrollments e
+     JOIN courses c ON c.id = e.course_id
+     LEFT JOIN users a ON a.id = e.assigned_by
+     WHERE e.user_id = ?
+     ORDER BY e.enrolled_at DESC`,
+    [user_id]
+  )
+
+// ── Admin — revoke (delete) an enrollment ─────────────────────────────────
+const deleteEnrollmentById = (id) => pool.query(`DELETE FROM enrollments WHERE id = ?`, [id])
+
+// ── Courses an admin can assign (anything not archived) ───────────────────
+const getAssignableCourses = ({ search }) => {
+  const values = []
+  let where = "WHERE c.status != 'archived'"
+  if (search) {
+    where += ' AND c.title LIKE ?'
+    values.push(`%${search}%`)
+  }
+  return pool.query(
+    `SELECT c.id, c.title, c.slug, c.thumbnail, c.price, c.status, c.level
+     FROM courses c
+     ${where}
+     ORDER BY c.title ASC
+     LIMIT 200`,
+    values
+  )
+}
 
 // ── Update progress ────────────────────────────────────────────────────────
 const updateProgress = (user_id, course_id, progress) =>
@@ -75,7 +120,7 @@ const getAllEnrollments = ({ limit, offset, course_id, user_id }) => {
 
   return pool.query(
     `SELECT
-       e.id, e.user_id, e.course_id, e.payment_id,
+       e.id, e.user_id, e.course_id, e.payment_id, e.source,
        e.enrolled_at, e.completed_at, e.progress,
        u.name AS student_name, u.email AS student_email,
        c.title AS course_title, c.slug AS course_slug
@@ -117,4 +162,8 @@ export {
   markCompleted,
   getAllEnrollments,
   countEnrollments,
+  createAssignedEnrollment,
+  getUserEnrollmentsDetailed,
+  deleteEnrollmentById,
+  getAssignableCourses,
 }

@@ -2,7 +2,13 @@
 
 import { Worker } from 'bullmq'
 import env from '../config/env.js'
-import { sendWelcomeMail, sendDiscountMail, sendInvoiceMail, sendSubAdminCredsMail } from '../utils/mailer.js'
+import {
+  sendWelcomeMail,
+  sendDiscountMail,
+  sendInvoiceMail,
+  sendSubAdminCredsMail,
+  sendCourseAssignedMail,
+} from '../utils/mailer.js'
 
 const connection = {
   host: env.redis.host,
@@ -31,6 +37,10 @@ const worker = new Worker(
 
       case 'subAdminCreds':
         await sendSubAdminCredsMail(data.to, data)
+        break
+
+      case 'courseAssigned':
+        await sendCourseAssignedMail(data.to, data)
         break
 
       default:

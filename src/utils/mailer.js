@@ -35,7 +35,7 @@ const sendMail = async ({ to, subject, html }) => {
 const sendWelcomeMail = (to, name) => {
   return sendMail({
     to,
-    subject: 'Welcome to EduPlatform! 🎓',
+    subject: `Welcome to ${env.appName}! 🎓`,
     html: `
       <h2>Welcome, ${name}!</h2>
       <p>Your account has been created successfully.</p>
@@ -98,4 +98,30 @@ const sendSubAdminCredsMail = (to, { name, password }) => {
   })
 }
 
-export { sendWelcomeMail, sendDiscountMail, sendInvoiceMail, sendSubAdminCredsMail }
+// 5. Course assigned free by an admin
+const escapeHtml = (value = '') =>
+  String(value).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  )
+
+const sendCourseAssignedMail = (to, { name, courseTitles = [] }) => {
+  const list = courseTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join('')
+  const many = courseTitles.length > 1
+  return sendMail({
+    to,
+    subject: `You've been given free access to ${many ? 'new courses' : 'a new course'} on ${env.appName}`,
+    html: `
+      <h2>Hi ${escapeHtml(name)},</h2>
+      <p>Good news! You now have free access to the following ${many ? 'courses' : 'course'}:</p>
+      <ul>${list}</ul>
+      <p>${many ? 'They are' : 'It is'} ready for you under <strong>My Courses</strong> — no payment needed.</p>
+      <br/>
+      <a href="${env.frontendUrl}/student/my-courses">Start learning</a>
+      <br/><br/>
+      <small>Questions? Contact us at ${env.supportEmail}.</small>
+    `,
+  })
+}
+
+export { sendWelcomeMail, sendDiscountMail, sendInvoiceMail, sendSubAdminCredsMail, sendCourseAssignedMail }

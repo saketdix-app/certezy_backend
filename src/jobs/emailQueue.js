@@ -43,4 +43,7 @@ const sendInvoiceJob = (data) => addEmailJob('invoice', data)
 const sendSubAdminCredsJob = (data) => addEmailJob('subAdminCreds', data)
 // data: { to, name, password }
 
-export { sendWelcomeJob, sendDiscountJob, sendInvoiceJob, sendSubAdminCredsJob }
+// Courses assigned free by an admin
+const sendCourseAssignedJob = (data) => addEmailJob('courseAssigned', data)
+
+export { sendWelcomeJob, sendDiscountJob, sendInvoiceJob, sendSubAdminCredsJob, sendCourseAssignedJob }
