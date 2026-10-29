@@ -9,9 +9,13 @@ import { validate, schemas } from '../../middleware/validate.js'
 const router = Router()
 
 // ─── PUBLIC ──────────────────────────────────────────────────
+// Lesson lists carry no content; free-preview lessons are public with content.
 router.get('/section/:section_id', controller.getLessonsBySectionId)
 router.get('/free/course/:course_id', controller.getFreeLessonsByCourseId)
-router.get('/:id', controller.getLessonById)
+
+// ─── LOGGED IN ────────────────────────────────────────────────
+// Full lesson (with content): free lessons, enrolled students, admins.
+router.get('/:id', authenticate, controller.getLessonById)
 
 // ─── ADMIN / SUB-ADMIN ONLY ───────────────────────────────────
 router.post(
