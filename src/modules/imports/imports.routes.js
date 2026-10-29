@@ -4,7 +4,7 @@
 //   GET  /imports/templates/:type.csv    download sample CSV (courses|curriculum|quizzes)
 //   POST /imports/:type                  { csv, dry_run } — validate (+ preview) or import
 //   GET  /imports/standard               bundled AWS / Azure course packs
-//   POST /imports/standard/:packId       import a bundled pack (as draft courses)
+//   POST /imports/standard/:packId       import a bundled pack (packId 'all' = every pack)
 
 import { Router } from 'express'
 import * as controller from './imports.controller.js'

@@ -2,9 +2,9 @@
 // Ready-made certification course packs that ship with the API
 // (seeds/standard/<pack>/{courses,curriculum,quizzes}.csv).
 //
-// Packs import as DRAFT, FREE courses so an admin can review the content,
-// set the real price and thumbnail, then publish. Importing a pack again
-// updates it instead of duplicating it.
+// Packs import as PUBLISHED, FREE courses (video lessons are public YouTube
+// courses, checked to be embeddable). Admins can change price, thumbnail or
+// status afterwards. Importing a pack again updates it instead of duplicating it.
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -22,7 +22,16 @@ export const listPacks = async () => {
   return packs
 }
 
+// Import every bundled pack in order (POST /imports/standard/all)
+export const importAllPacks = async ({ dry_run = false } = {}, userId) => {
+  const packs = await listPacks()
+  const results = {}
+  for (const pack of packs) results[pack.id] = (await importPack(pack.id, { dry_run }, userId)).results
+  return { pack: 'all', dry_run, results }
+}
+
 export const importPack = async (packId, { dry_run = false } = {}, userId) => {
+  if (packId === 'all') return importAllPacks({ dry_run }, userId)
   const packs = await listPacks()
   const pack = packs.find((p) => p.id === packId)
   if (!pack) throw AppError.notFound('Course pack')
