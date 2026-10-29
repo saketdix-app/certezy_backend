@@ -14,7 +14,7 @@ const getLessonsBySectionId = async (req, res, next) => {
 
 const getLessonById = async (req, res, next) => {
   try {
-    const lesson = await service.getLessonById(req.params.id)
+    const lesson = await service.getLessonForUser(req.params.id, req.user)
     return success(res, { message: 'Lesson fetched', data: { lesson } })
   } catch (err) {
     next(err)

@@ -3,6 +3,7 @@
 import * as queries from './lessons.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { invalidateCourseCache } from '../courses/courses.service.js'
+import { checkEnrollment } from '../enrollments/enrollments.service.js'
 
 // ── Get all lessons by section_id ──────────────────────────────────────────
 const getLessonsBySectionId = async (section_id) => {
@@ -19,6 +20,26 @@ const getLessonById = async (id) => {
     throw err
   }
   return rows[0]
+}
+
+// ── Get lesson with content, only for someone allowed to see it ───────────
+// Admins/sub-admins: any lesson. Others: free-preview lessons, or lessons of a
+// course they are enrolled in.
+const STAFF_ROLES = ['admin', 'sub_admin']
+
+const getLessonForUser = async (id, user) => {
+  const lesson = await getLessonById(id)
+  if (lesson.is_free || STAFF_ROLES.includes(user?.role)) return lesson
+
+  const [sectionRows] = await queries.getCourseIdBySectionId(lesson.section_id)
+  const course_id = sectionRows[0]?.course_id
+  const enrollment = course_id && user ? await checkEnrollment(user.id, course_id) : null
+  if (!enrollment) {
+    const err = new Error('Enrol in this course to access this lesson')
+    err.statusCode = 403
+    throw err
+  }
+  return lesson
 }
 
 // ── Get free preview lessons by course_id ─────────────────────────────────
@@ -107,6 +128,7 @@ const updateCourseMeta = async (section_id) => {
 export {
   getLessonsBySectionId,
   getLessonById,
+  getLessonForUser,
   getFreeLessonsByCourseId,
   createLesson,
   updateLesson,
