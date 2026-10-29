@@ -25,11 +25,38 @@ const getCertificateByUserAndCourse = (user_id, course_id) =>
 const updatePdfUrl = (id, pdf_url) =>
   pool.query(`UPDATE certificates SET pdf_url = ? WHERE id = ?`, [pdf_url, id])
 
+// ── Public verification by certificate number ─────────────────────────────
+const getCertificateForVerify = (certificate_no) =>
+  pool.query(
+    `SELECT
+       cert.certificate_no, cert.issued_at, cert.valid_until, cert.pdf_url,
+       u.name AS student_name,
+       c.title AS course_title, c.slug AS course_slug
+     FROM certificates cert
+     JOIN users u   ON u.id = cert.user_id
+     JOIN courses c ON c.id = cert.course_id
+     WHERE cert.certificate_no = ? LIMIT 1`,
+    [certificate_no]
+  )
+
+// ── Final tests of a course + whether the student has passed each ─────────
+const getFinalTestResults = (user_id, course_id) =>
+  pool.query(
+    `SELECT t.id,
+       EXISTS(
+         SELECT 1 FROM test_attempts a
+         WHERE a.test_id = t.id AND a.user_id = ? AND a.is_passed = 1
+       ) AS passed
+     FROM tests t
+     WHERE t.course_id = ? AND t.type = 'final' AND t.status = 'active'`,
+    [user_id, course_id]
+  )
+
 // ── Get all certificates of a student ─────────────────────────────────────
 const getCertificatesByUserId = (user_id) =>
   pool.query(
     `SELECT
-       cert.id, cert.certificate_no, cert.issued_at,
+       cert.id, cert.course_id, cert.certificate_no, cert.issued_at,
        cert.valid_until, cert.pdf_url,
        c.title AS course_title, c.slug AS course_slug,
        c.thumbnail AS course_thumbnail
@@ -65,6 +92,8 @@ export {
   getCertificateByUserAndCourse,
   updatePdfUrl,
   getCertificatesByUserId,
+  getCertificateForVerify,
+  getFinalTestResults,
   getAllCertificates,
   countCertificates,
 }
