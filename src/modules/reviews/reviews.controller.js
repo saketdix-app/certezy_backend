@@ -3,6 +3,7 @@
 import * as service from './reviews.service.js'
 import { success } from '../../utils/response.js'
 import { asyncHandler } from '../../utils/http.js'
+import { REVIEW_SOURCES } from '../../constants.js'
 
 // POST /reviews — submit review (student)
 const createReview = asyncHandler(async (req, res) => {
@@ -62,6 +63,23 @@ const updateApprovalStatus = asyncHandler(async (req, res) => {
   return success(res, { message: 'Review updated', data: { review } })
 })
 
+// POST /reviews/admin — add a genuine review collected outside the site (admin)
+const createAdminReview = asyncHandler(async (req, res) => {
+  const review = await service.createAdminReview(req.body, req.user.id)
+  return success(res, { statusCode: 201, message: 'Review added', data: { review } })
+})
+
+// PUT /reviews/admin/:id — edit an admin-entered review (admin)
+const updateAdminReview = asyncHandler(async (req, res) => {
+  const review = await service.updateAdminReview(req.params.id, req.body)
+  return success(res, { message: 'Review updated', data: { review } })
+})
+
+// GET /reviews/admin/sources — labels for the source dropdown (admin)
+const getSources = asyncHandler(async (req, res) => {
+  return success(res, { message: 'Review sources', data: REVIEW_SOURCES })
+})
+
 // DELETE /reviews/:id (admin)
 const deleteReview = asyncHandler(async (req, res) => {
   await service.deleteReview(req.params.id)
@@ -70,6 +88,9 @@ const deleteReview = asyncHandler(async (req, res) => {
 
 export {
   createReview,
+  createAdminReview,
+  updateAdminReview,
+  getSources,
   updateMyReview,
   getMyReview,
   getReviewsByCourseId,

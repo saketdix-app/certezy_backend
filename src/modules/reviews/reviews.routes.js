@@ -5,6 +5,7 @@ import Joi from 'joi'
 import * as controller from './reviews.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
@@ -14,6 +15,16 @@ const approvalSchema = Joi.object({ is_approved: Joi.number().integer().valid(0,
 // ─── ADMIN ────────────────────────────────────────────────────
 router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllReviews)
 router.get('/admin/pending', authenticate, role('admin', 'sub_admin'), controller.getPendingReviews)
+router.get('/admin/sources', authenticate, role('admin', 'sub_admin'), controller.getSources)
+// Genuine reviews collected outside the site (classroom, corporate, other platforms…)
+const canEnterReviews = [authenticate, role('admin', 'sub_admin'), permission('can_manage_courses')]
+router.post('/admin', ...canEnterReviews, validate(schemas.createAdminReview), controller.createAdminReview)
+router.put(
+  '/admin/:id',
+  ...canEnterReviews,
+  validate(schemas.updateAdminReview),
+  controller.updateAdminReview
+)
 router.put(
   '/:id/approval',
   authenticate,

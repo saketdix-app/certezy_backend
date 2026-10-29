@@ -272,12 +272,17 @@ CREATE TABLE IF NOT EXISTS certificates (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS reviews (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  user_id      INT NOT NULL,
-  course_id    INT NOT NULL,
-  rating       TINYINT NOT NULL,
-  comment      TEXT NULL,
-  is_approved  TINYINT(1) NOT NULL DEFAULT 0,
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT NULL,                               -- NULL for reviews entered by an admin
+  course_id      INT NOT NULL,
+  rating         TINYINT NOT NULL,
+  comment        TEXT NULL,
+  is_approved    TINYINT(1) NOT NULL DEFAULT 0,
+  source         VARCHAR(20) NOT NULL DEFAULT 'platform', -- see REVIEW_SOURCES in src/constants.js
+  reviewer_name  VARCHAR(100) NULL,
+  source_note    VARCHAR(255) NULL,
+  reviewed_at    DATE NULL,
+  created_by     INT NULL,
   created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at   TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_review (user_id, course_id),

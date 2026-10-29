@@ -21,3 +21,15 @@ export const DIFFICULTIES = ['easy', 'medium', 'hard']
 
 // Enrollment.source values
 export const ENROLLMENT_SOURCES = { PURCHASE: 'purchase', ADMIN: 'admin', FREE: 'free' }
+
+// Where a review came from. 'platform' = written by an enrolled student on the
+// site; the others are genuine reviews an admin entered on a learner's behalf
+// (shown publicly with this label).
+export const REVIEW_SOURCES = {
+  platform: 'Verified Certezy learner',
+  classroom: 'Classroom / live batch',
+  corporate: 'Corporate training',
+  other_platform: 'Another platform',
+  feedback_form: 'Feedback form / email',
+}
+export const ADMIN_REVIEW_SOURCES = Object.keys(REVIEW_SOURCES).filter((s) => s !== 'platform')

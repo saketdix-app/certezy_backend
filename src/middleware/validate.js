@@ -9,6 +9,7 @@ import {
   TEST_TYPES,
   QUESTION_TYPES,
   DIFFICULTIES,
+  ADMIN_REVIEW_SOURCES,
 } from '../constants.js'
 
 const validate = (schema) => {
@@ -229,6 +230,28 @@ const updateReviewSchema = Joi.object({
   comment: Joi.string().trim().max(1000).allow('', null).optional(),
 })
 
+// Admin-entered review: a genuine review collected outside the site
+// (classroom batch, corporate training, another platform, feedback form)
+const adminReviewFields = {
+  course_id: Joi.number().integer().positive(),
+  reviewer_name: Joi.string().trim().min(2).max(100),
+  rating: Joi.number().integer().min(1).max(5),
+  comment: Joi.string().trim().max(2000).allow('', null),
+  source: Joi.string().valid(...ADMIN_REVIEW_SOURCES),
+  source_note: Joi.string().trim().max(255).allow('', null),
+  reviewed_at: Joi.date().iso().max('now').allow(null, ''),
+  is_approved: Joi.number().integer().valid(0, 1).default(1),
+}
+const createAdminReviewSchema = Joi.object({
+  ...adminReviewFields,
+  // The admin confirms this review really came from a learner
+  confirm_genuine: Joi.boolean().valid(true).required().messages({
+    'any.only': 'Please confirm this is a genuine review from a real learner',
+    'any.required': 'Please confirm this is a genuine review from a real learner',
+  }),
+}).fork(['course_id', 'reviewer_name', 'rating', 'source'], (f) => f.required())
+const updateAdminReviewSchema = Joi.object(adminReviewFields)
+
 // ── CSV import ──────────────────────────────────────────────────────────
 const csvImportSchema = Joi.object({
   csv: Joi.string()
@@ -238,6 +261,8 @@ const csvImportSchema = Joi.object({
   dry_run: Joi.boolean().default(false),
   // courses only: create a category when the CSV names one that doesn't exist
   create_missing_categories: Joi.boolean().default(true),
+  // reviews only: admin confirms every row is a genuine learner review
+  confirm_genuine: Joi.boolean().default(false),
 })
 
 const createSubAdminSchema = Joi.object({
@@ -269,6 +294,8 @@ const schemas = {
   login: loginSchema,
   createReview: reviewSchema,
   updateReview: updateReviewSchema,
+  createAdminReview: createAdminReviewSchema,
+  updateAdminReview: updateAdminReviewSchema,
   csvImport: csvImportSchema,
   changePassword: changePasswordSchema,
   createCategory: createCategorySchema,

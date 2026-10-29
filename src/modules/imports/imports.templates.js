@@ -258,6 +258,46 @@ export const TEMPLATES = {
   },
 }
 
+TEMPLATES.reviews = {
+  label: 'Reviews',
+  description:
+    'Genuine reviews collected outside the site (classroom batches, corporate training, other platforms). Shown with their source.',
+  columns: [
+    { name: 'course_slug', required: true, help: 'Slug of an existing course' },
+    { name: 'reviewer_name', required: true, help: 'Learner name as it should appear (e.g. "Priya S.")' },
+    { name: 'rating', required: true, help: 'Whole stars, 1–5' },
+    { name: 'comment', help: 'Review text, exactly as the learner wrote it' },
+    {
+      name: 'source',
+      required: true,
+      help: 'classroom | corporate | other_platform | feedback_form',
+    },
+    { name: 'source_note', help: 'Where it came from, e.g. "PMP weekend batch, Pune" or "Udemy"' },
+    { name: 'review_date', help: 'YYYY-MM-DD — when the learner gave the review' },
+  ],
+  // Placeholder rows only — replace with real learners' reviews before importing
+  sample: [
+    {
+      course_slug: 'pmp-exam-prep',
+      reviewer_name: 'REPLACE – learner name',
+      rating: '5',
+      comment: "REPLACE with the learner's exact words",
+      source: 'classroom',
+      source_note: 'e.g. PMP weekend batch, Pune',
+      review_date: '2025-03-14',
+    },
+    {
+      course_slug: 'pmp-exam-prep',
+      reviewer_name: 'REPLACE – learner name',
+      rating: '4',
+      comment: "REPLACE with the learner's exact words",
+      source: 'other_platform',
+      source_note: 'e.g. Udemy',
+      review_date: '2025-04-02',
+    },
+  ],
+}
+
 export const IMPORT_TYPES = Object.keys(TEMPLATES)
 
 // ── CSV writing ───────────────────────────────────────────────────────────

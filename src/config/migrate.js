@@ -146,6 +146,35 @@ const STEPS = [
     run: () => addColumnIfMissing('courses', 'original_price', 'DECIMAL(10,2) NULL AFTER price'),
   },
   {
+    name: 'reviews.user_id nullable (reviews entered by an admin have no student account)',
+    run: async () => {
+      const col = await columnInfo('reviews', 'user_id')
+      if (!col || col.IS_NULLABLE === 'YES') return false
+      await pool.query(`ALTER TABLE reviews MODIFY user_id ${col.COLUMN_TYPE} NULL`)
+      return true
+    },
+  },
+  {
+    name: 'reviews.source (platform | classroom | corporate | other_platform | feedback_form)',
+    run: () => addColumnIfMissing('reviews', 'source', "VARCHAR(20) NOT NULL DEFAULT 'platform'"),
+  },
+  {
+    name: 'reviews.reviewer_name (name shown for admin-entered reviews)',
+    run: () => addColumnIfMissing('reviews', 'reviewer_name', 'VARCHAR(100) NULL'),
+  },
+  {
+    name: 'reviews.source_note (e.g. "PMP weekend batch, Pune — Mar 2025")',
+    run: () => addColumnIfMissing('reviews', 'source_note', 'VARCHAR(255) NULL'),
+  },
+  {
+    name: 'reviews.reviewed_at (original review date)',
+    run: () => addColumnIfMissing('reviews', 'reviewed_at', 'DATE NULL'),
+  },
+  {
+    name: 'reviews.created_by (admin who entered the review)',
+    run: () => addColumnIfMissing('reviews', 'created_by', 'INT NULL'),
+  },
+  {
     name: 'reviews.updated_at (students can edit their review)',
     run: () =>
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),

@@ -103,12 +103,57 @@ const getReviewsByCourseId = async (courseIdOrSlug, query = {}) => {
 // ── Admin — get all reviews ────────────────────────────────────────────────
 const getAllReviews = async (query = {}) => {
   const { page, limit, offset } = parsePaging(query)
-  const filters = { is_approved: query.is_approved, course_id: query.course_id }
+  const filters = {
+    is_approved: query.is_approved,
+    course_id: query.course_id,
+    source: query.source,
+    search: typeof query.search === 'string' ? query.search.trim().slice(0, 100) : undefined,
+  }
 
   const [rows] = await queries.getAllReviews({ limit, offset, ...filters })
   const [count] = await queries.countReviews(filters)
 
   return { reviews: rows, pagination: buildPagination({ total: count[0].total, page, limit }) }
+}
+
+// ── Admin — add a genuine review collected outside the site ──────────────
+// e.g. feedback from a classroom batch or a review the learner left on another
+// platform. Shown publicly with its source label ("Classroom / live batch"…).
+const createAdminReview = async (body, adminId) => {
+  const [courseRows] = await courseQueries.getCourseById(body.course_id)
+  if (!courseRows.length) throw AppError.notFound('Course')
+
+  const [result] = await queries.createAdminReview({
+    ...body,
+    is_approved: body.is_approved ?? 1,
+    created_by: adminId,
+  })
+  await updateCourseRating(body.course_id)
+  const [rows] = await queries.getReviewById(result.insertId)
+  return rows[0]
+}
+
+// ── Admin — edit an admin-entered review (student reviews stay as written) ─
+const updateAdminReview = async (id, body) => {
+  const [rows] = await queries.getReviewById(id)
+  const current = rows[0]
+  if (!current) throw AppError.notFound('Review')
+  if (current.source === 'platform') {
+    throw AppError.forbidden('Reviews written by students can only be approved, rejected or deleted')
+  }
+
+  const next = { ...current, ...Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)) }
+  if (next.course_id !== current.course_id) {
+    const [courseRows] = await courseQueries.getCourseById(next.course_id)
+    if (!courseRows.length) throw AppError.notFound('Course')
+  }
+
+  await queries.updateAdminReview(id, next)
+  await updateCourseRating(current.course_id)
+  if (next.course_id !== current.course_id) await updateCourseRating(next.course_id)
+
+  const [updated] = await queries.getReviewById(id)
+  return updated[0]
 }
 
 // ── Public — latest approved reviews for homepage testimonials ─────────────
@@ -141,6 +186,8 @@ const deleteReview = async (id) => {
 
 export {
   createReview,
+  createAdminReview,
+  updateAdminReview,
   updateMyReview,
   getMyReview,
   getReviewsByCourseId,

@@ -8,6 +8,7 @@ Admins can create or update courses, curriculum and quizzes from CSV files
 1. **Courses** — `courses.csv`
 2. **Sections & Lessons** — `curriculum.csv` (references `course_slug`)
 3. **Quizzes & Questions** — `quizzes.csv` (references `course_slug`)
+4. **Reviews** — `reviews.csv` (any time after the course exists)
 
 Download a sample of each from the admin page (or `GET /api/v1/imports/templates/<type>.csv`).
 The admin page also shows a column guide.
@@ -58,6 +59,29 @@ The admin page also shows a column guide.
 
 When a question is re-imported with unchanged options, option ids are kept so past
 attempt results stay intact.
+
+### Reviews (`reviews.csv`)
+
+For **genuine** reviews learners gave outside the website — classroom/live
+batches, corporate training, another platform (Udemy, Google…), feedback forms.
+
+| Column | Notes |
+|---|---|
+| `course_slug` * | existing course |
+| `reviewer_name` * | as it should appear, e.g. `Priya S.` |
+| `rating` * | 1–5 |
+| `comment` | the learner's exact words |
+| `source` * | `classroom` · `corporate` · `other_platform` · `feedback_form` |
+| `source_note` | e.g. `PMP weekend batch, Pune` or `Udemy` |
+| `review_date` | `YYYY-MM-DD` |
+
+- The admin must tick "I confirm every row is a genuine review" (API: `confirm_genuine: true`).
+- Imported reviews are approved, shown on the course page with their source label
+  (e.g. "Classroom batch · PMP weekend batch, Pune", "Via Udemy") and count toward the
+  course rating. Each one records which admin added it.
+- Re-importing the same reviewer + comment for a course updates it instead of duplicating.
+- Single reviews can also be added/edited in **Admin → Reviews → Add review**.
+  Reviews written by students on the site can only be approved, hidden or deleted — never edited.
 
 ## Standard AWS / Azure packs
 

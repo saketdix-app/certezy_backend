@@ -26,6 +26,14 @@ const getReviewByUserAndCourse = (user_id, course_id) =>
 // ── Get review by ID ───────────────────────────────────────────────────────
 const getReviewById = (id) => pool.query(`SELECT * FROM reviews WHERE id = ? LIMIT 1`, [id])
 
+// Display name + date shared by public and admin listings. Admin-entered
+// reviews have no user row, so the name/date come from the review itself.
+const DISPLAY_COLUMNS = `
+  COALESCE(r.reviewer_name, u.name, 'Learner') AS student_name,
+  u.avatar AS student_avatar,
+  r.source, r.source_note,
+  COALESCE(r.reviewed_at, r.created_at) AS review_date`
+
 // ── Approved reviews of a course (paginated, newest first) ─────────────────
 const getReviewsByCourseId = (course_id, { limit, offset, rating }) => {
   const values = [course_id]
@@ -36,13 +44,11 @@ const getReviewsByCourseId = (course_id, { limit, offset, rating }) => {
   }
   values.push(Number(limit), Number(offset))
   return pool.query(
-    `SELECT
-       r.id, r.rating, r.comment, r.created_at, r.updated_at,
-       u.name AS student_name, u.avatar AS student_avatar
+    `SELECT r.id, r.rating, r.comment, r.created_at, r.updated_at, ${DISPLAY_COLUMNS}
      FROM reviews r
-     JOIN users u ON u.id = r.user_id
+     LEFT JOIN users u ON u.id = r.user_id
      WHERE r.course_id = ? AND r.is_approved = 1${extra}
-     ORDER BY r.created_at DESC, r.id DESC
+     ORDER BY review_date DESC, r.id DESC
      LIMIT ? OFFSET ?`,
     values
   )
@@ -65,7 +71,7 @@ const getRatingStats = (course_id) =>
   )
 
 // ── Admin — get all reviews ────────────────────────────────────────────────
-const buildAdminFilter = ({ is_approved, course_id }) => {
+const buildAdminFilter = ({ is_approved, course_id, source, search }) => {
   const conditions = []
   const values = []
   if (is_approved !== undefined && is_approved !== '') {
@@ -76,21 +82,36 @@ const buildAdminFilter = ({ is_approved, course_id }) => {
     conditions.push('r.course_id = ?')
     values.push(course_id)
   }
+  if (source === 'admin') {
+    conditions.push("r.source <> 'platform'")
+  } else if (source) {
+    conditions.push('r.source = ?')
+    values.push(source)
+  }
+  if (search) {
+    conditions.push('(COALESCE(r.reviewer_name, u.name) LIKE ? OR c.title LIKE ? OR r.comment LIKE ?)')
+    values.push(`%${search}%`, `%${search}%`, `%${search}%`)
+  }
   return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', values }
 }
+
+const ADMIN_FROM = `
+  FROM reviews r
+  LEFT JOIN users u ON u.id = r.user_id
+  JOIN courses c    ON c.id = r.course_id
+  LEFT JOIN users a ON a.id = r.created_by`
 
 const getAllReviews = ({ limit, offset, ...filters }) => {
   const { where, values } = buildAdminFilter(filters)
   return pool.query(
     `SELECT
-       r.id, r.course_id, r.rating, r.comment, r.is_approved, r.created_at,
-       u.name  AS student_name,
-       c.title AS course_title, c.slug AS course_slug
-     FROM reviews r
-     JOIN users u   ON u.id = r.user_id
-     JOIN courses c ON c.id = r.course_id
+       r.id, r.user_id, r.course_id, r.rating, r.comment, r.is_approved, r.created_at,
+       r.reviewer_name, r.reviewed_at, ${DISPLAY_COLUMNS},
+       c.title AS course_title, c.slug AS course_slug,
+       a.name  AS created_by_name
+     ${ADMIN_FROM}
      ${where}
-     ORDER BY r.created_at DESC
+     ORDER BY r.created_at DESC, r.id DESC
      LIMIT ? OFFSET ?`,
     [...values, Number(limit), Number(offset)]
   )
@@ -99,7 +120,56 @@ const getAllReviews = ({ limit, offset, ...filters }) => {
 // ── Count reviews ──────────────────────────────────────────────────────────
 const countReviews = (filters) => {
   const { where, values } = buildAdminFilter(filters)
-  return pool.query(`SELECT COUNT(*) AS total FROM reviews r ${where}`, values)
+  return pool.query(`SELECT COUNT(*) AS total ${ADMIN_FROM} ${where}`, values)
+}
+
+// ── Admin — enter a genuine review collected outside the site ─────────────
+const createAdminReview = (r, executor = pool) =>
+  executor.query(
+    `INSERT INTO reviews
+       (user_id, course_id, rating, comment, is_approved, source, reviewer_name, source_note, reviewed_at, created_by)
+     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      r.course_id,
+      r.rating,
+      r.comment || null,
+      r.is_approved ? 1 : 0,
+      r.source,
+      r.reviewer_name,
+      r.source_note || null,
+      r.reviewed_at || null,
+      r.created_by ?? null,
+    ]
+  )
+
+const updateAdminReview = (id, r, executor = pool) =>
+  executor.query(
+    `UPDATE reviews
+     SET course_id = ?, rating = ?, comment = ?, is_approved = ?, source = ?,
+         reviewer_name = ?, source_note = ?, reviewed_at = ?
+     WHERE id = ? AND source <> 'platform'`,
+    [
+      r.course_id,
+      r.rating,
+      r.comment || null,
+      r.is_approved ? 1 : 0,
+      r.source,
+      r.reviewer_name,
+      r.source_note || null,
+      r.reviewed_at || null,
+      id,
+    ]
+  )
+
+// Used by CSV import to avoid duplicating the same review on re-import
+const findAdminReview = async ({ course_id, reviewer_name, comment }, executor = pool) => {
+  const [rows] = await executor.query(
+    `SELECT id FROM reviews
+     WHERE course_id = ? AND source <> 'platform' AND reviewer_name = ? AND COALESCE(comment, '') = ?
+     LIMIT 1`,
+    [course_id, reviewer_name, comment || '']
+  )
+  return rows[0] || null
 }
 
 // ── Admin — approve/reject review ─────────────────────────────────────────
@@ -111,6 +181,9 @@ const deleteReviewById = (id) => pool.query(`DELETE FROM reviews WHERE id = ?`, 
 
 export {
   createReview,
+  createAdminReview,
+  updateAdminReview,
+  findAdminReview,
   updateReview,
   getReviewByUserAndCourse,
   getReviewById,

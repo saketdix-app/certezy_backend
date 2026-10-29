@@ -23,7 +23,10 @@ import {
   TEST_TYPES,
   QUESTION_TYPES,
   DIFFICULTIES,
+  ADMIN_REVIEW_SOURCES,
 } from '../../constants.js'
+import * as reviewQueries from '../reviews/reviews.queries.js'
+import { updateCourseRating } from '../reviews/reviews.service.js'
 
 const MAX_ROWS = 5000
 const OPTION_COLUMNS = ['option_a', 'option_b', 'option_c', 'option_d', 'option_e', 'option_f']
@@ -293,7 +296,46 @@ const validateQuizRow = (row) => {
   }
 }
 
-const VALIDATORS = { courses: validateCourseRow, curriculum: validateCurriculumRow, quizzes: validateQuizRow }
+const validateReviewRow = (row) => {
+  const e = rowErrors()
+  const course_slug = toSlug(row.course_slug)
+  if (!course_slug) e.add('course_slug', 'is required')
+  const reviewer_name = str(row.reviewer_name)
+  if (reviewer_name.length < 2 || reviewer_name.length > 100)
+    e.add('reviewer_name', 'is required (2–100 chars)')
+  // Never import the downloadable sample's placeholder rows by accident
+  if (/REPLACE/i.test(reviewer_name) || /REPLACE/i.test(str(row.comment))) {
+    e.add('reviewer_name', 'still contains the sample placeholder text — enter the real learner review')
+  }
+  const rating = parseIntOr(row.rating, NaN)
+  if (!(rating >= 1 && rating <= 5)) e.add('rating', 'must be a whole number from 1 to 5')
+  const comment = str(row.comment)
+  if (comment.length > 2000) e.add('comment', 'must be 2,000 characters or fewer')
+  const source = str(row.source).toLowerCase()
+  if (!ADMIN_REVIEW_SOURCES.includes(source))
+    e.add('source', `must be one of: ${ADMIN_REVIEW_SOURCES.join(', ')}`)
+  const source_note = str(row.source_note)
+  if (source_note.length > 255) e.add('source_note', 'must be 255 characters or fewer')
+  const date = str(row.review_date)
+  let reviewed_at = null
+  if (date) {
+    const d = new Date(`${date}T00:00:00Z`)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(d.getTime())) e.add('review_date', 'use YYYY-MM-DD')
+    else if (d > new Date()) e.add('review_date', 'cannot be in the future')
+    else reviewed_at = date
+  }
+  return {
+    errors: e.list,
+    value: { course_slug, reviewer_name, rating, comment, source, source_note, reviewed_at },
+  }
+}
+
+const VALIDATORS = {
+  courses: validateCourseRow,
+  curriculum: validateCurriculumRow,
+  quizzes: validateQuizRow,
+  reviews: validateReviewRow,
+}
 
 // ── Appliers: write validated rows using one connection ───────────────────
 const newSummary = () => ({ created: {}, updated: {} })
@@ -479,7 +521,37 @@ const applyQuizzes = async (conn, rows, ctx) => {
   }
 }
 
-const APPLIERS = { courses: applyCourses, curriculum: applyCurriculum, quizzes: applyQuizzes }
+const applyReviews = async (conn, rows, ctx) => {
+  const courseCache = new Map()
+  for (const { line, value } of rows) {
+    const course_id = await courseIdBySlug(conn, value.course_slug, courseCache)
+    if (!course_id) {
+      ctx.errors.push({
+        row: line,
+        column: 'course_slug',
+        message: `no course with slug "${value.course_slug}"`,
+      })
+      continue
+    }
+    const review = { ...value, course_id, is_approved: 1, created_by: ctx.userId }
+    const found = await reviewQueries.findAdminReview(review, conn)
+    if (found) {
+      await reviewQueries.updateAdminReview(found.id, review, conn)
+      bump(ctx.summary, 'updated', 'reviews')
+    } else {
+      await reviewQueries.createAdminReview(review, conn)
+      bump(ctx.summary, 'created', 'reviews')
+    }
+    ctx.touchedReviewCourses.add(course_id)
+  }
+}
+
+const APPLIERS = {
+  courses: applyCourses,
+  curriculum: applyCurriculum,
+  quizzes: applyQuizzes,
+  reviews: applyReviews,
+}
 
 // ── Public API ────────────────────────────────────────────────────────────
 /**
@@ -487,8 +559,17 @@ const APPLIERS = { courses: applyCourses, curriculum: applyCurriculum, quizzes: 
  * @returns {{ type, dry_run, rows, summary, errors }}
  * @throws AppError 422 with `errors: [{ row, column, message }]` when any row is invalid
  */
-export const runImport = async (type, { csv, dry_run = false, create_missing_categories = true }, userId) => {
+export const runImport = async (
+  type,
+  { csv, dry_run = false, create_missing_categories = true, confirm_genuine = false },
+  userId
+) => {
   if (!VALIDATORS[type]) throw AppError.notFound('Import type')
+  if (type === 'reviews' && !confirm_genuine && !dry_run) {
+    throw AppError.badRequest(
+      'Please confirm that every review in this file is a genuine review from a real learner'
+    )
+  }
 
   const records = parseCsv(csv)
   if (!records.length) throw AppError.badRequest('The CSV has a header but no data rows')
@@ -530,6 +611,7 @@ export const runImport = async (type, { csv, dry_run = false, create_missing_cat
     touchedSlugs: new Set(),
     touchedCourses: new Set(),
     touchedTests: new Set(),
+    touchedReviewCourses: new Set(),
   }
 
   const conn = await pool.getConnection()
@@ -559,7 +641,10 @@ export const runImport = async (type, { csv, dry_run = false, create_missing_cat
     conn.release()
   }
 
-  if (!dry_run) await invalidateCourseCache(...ctx.touchedSlugs)
+  if (!dry_run) {
+    await invalidateCourseCache(...ctx.touchedSlugs)
+    for (const course_id of ctx.touchedReviewCourses) await updateCourseRating(course_id)
+  }
 
   return { type, dry_run, rows: records.length, summary: ctx.summary, errors: [] }
 }
