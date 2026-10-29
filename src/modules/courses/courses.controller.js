@@ -2,63 +2,32 @@
 
 import * as service from './courses.service.js'
 import { success } from '../../utils/response.js'
+import { asyncHandler } from '../../utils/http.js'
 
-const getAllCourses = async (req, res, next) => {
-  try {
-    const { page, limit, status, category_id, level, is_featured, search, sortBy, sortOrder } = req.query
+// GET /courses?page&limit&status&category_id&level&is_featured&pricing&search&sortBy&sortOrder
+const getAllCourses = asyncHandler(async (req, res) => {
+  const result = await service.getAllCourses(req.query)
+  return success(res, { message: 'Courses fetched', data: result.courses, pagination: result.pagination })
+})
 
-    const result = await service.getAllCourses({
-      page,
-      limit,
-      status,
-      category_id,
-      level,
-      is_featured,
-      search,
-      sortBy,
-      sortOrder,
-    })
+const getCourseBySlug = asyncHandler(async (req, res) => {
+  const course = await service.getCourseBySlug(req.params.slug)
+  return success(res, { message: 'Course fetched', data: { course } })
+})
 
-    return success(res, { message: 'Courses fetched', data: result.courses, pagination: result.pagination })
-  } catch (err) {
-    next(err)
-  }
-}
+const createCourse = asyncHandler(async (req, res) => {
+  const course = await service.createCourse(req.body, req.user.id)
+  return success(res, { statusCode: 201, message: 'Course created', data: { course } })
+})
 
-const getCourseBySlug = async (req, res, next) => {
-  try {
-    const course = await service.getCourseBySlug(req.params.slug)
-    return success(res, { message: 'Course fetched', data: { course } })
-  } catch (err) {
-    next(err)
-  }
-}
+const updateCourse = asyncHandler(async (req, res) => {
+  const course = await service.updateCourse(req.params.id, req.body)
+  return success(res, { message: 'Course updated', data: { course } })
+})
 
-const createCourse = async (req, res, next) => {
-  try {
-    const course = await service.createCourse(req.body, req.user.id)
-    return success(res, { statusCode: 201, message: 'Course created', data: { course } })
-  } catch (err) {
-    next(err)
-  }
-}
-
-const updateCourse = async (req, res, next) => {
-  try {
-    const course = await service.updateCourse(req.params.id, req.body)
-    return success(res, { message: 'Course updated', data: { course } })
-  } catch (err) {
-    next(err)
-  }
-}
-
-const deleteCourse = async (req, res, next) => {
-  try {
-    await service.deleteCourse(req.params.id)
-    return success(res, { message: 'Course deleted' })
-  } catch (err) {
-    next(err)
-  }
-}
+const deleteCourse = asyncHandler(async (req, res) => {
+  await service.deleteCourse(req.params.id)
+  return success(res, { message: 'Course deleted' })
+})
 
 export { getAllCourses, getCourseBySlug, createCourse, updateCourse, deleteCourse }

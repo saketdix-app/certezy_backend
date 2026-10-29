@@ -4,12 +4,12 @@ import * as queries from './enrollments.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import * as authQueries from '../auth/auth.queries.js'
 import { sendCourseAssignedJob } from '../../jobs/emailQueue.js'
+import { AppError } from '../../utils/http.js'
+import { isFreeCourse } from '../../utils/pricing.js'
+import { ENROLLMENT_SOURCES } from '../../constants.js'
+import { invalidateCourseCache } from '../courses/courses.service.js'
 
-const httpError = (message, statusCode) => {
-  const err = new Error(message)
-  err.statusCode = statusCode
-  return err
-}
+const httpError = (message, statusCode) => new AppError(message, statusCode)
 
 // ── Get my enrolled courses (student) ─────────────────────────────────────
 const getMyEnrollments = async (user_id) => {
@@ -24,32 +24,36 @@ const checkEnrollment = async (user_id, course_id) => {
 }
 
 // ── Create enrollment — called internally by payment service ──────────────
-const createEnrollment = async ({ user_id, course_id, payment_id }) => {
-  // Already enrolled check
+const createEnrollment = async ({ user_id, course_id, payment_id, source = ENROLLMENT_SOURCES.PURCHASE }) => {
   const existing = await checkEnrollment(user_id, course_id)
-  if (existing) {
-    const err = new Error('Student already enrolled in this course')
-    err.statusCode = 409
-    throw err
-  }
+  if (existing) throw AppError.conflict('Student already enrolled in this course')
 
-  // Course exists check
   const [courseCheck] = await courseQueries.checkCourseExists(course_id)
-  if (!courseCheck.length) {
-    const err = new Error('Course not found or archived')
-    err.statusCode = 404
-    throw err
-  }
+  if (!courseCheck.length) throw AppError.notFound('Course')
 
-  // Create enrollment
-  const [result] = await queries.createEnrollment({ user_id, course_id, payment_id })
+  const [result] = await queries.createEnrollment({ user_id, course_id, payment_id, source })
 
-  // Increment enrolled_count on course
   await courseQueries.incrementEnrolledCount(course_id)
+  await invalidateCourseCache()
 
   // Return new enrollment
   const [rows] = await queries.getEnrollmentById(result.insertId)
   return rows[0]
+}
+
+// ── Student — enrol in a free course (no checkout) ────────────────────────
+const enrollFree = async (user_id, course_id) => {
+  const [rows] = await courseQueries.getCourseById(course_id)
+  const course = rows[0]
+  if (!course || course.status !== 'published') throw AppError.notFound('Course')
+  if (!isFreeCourse(course))
+    throw AppError.badRequest('This course is paid — please complete checkout to enrol')
+
+  const existing = await checkEnrollment(user_id, course_id)
+  if (existing) return { enrollment: existing, already_enrolled: true }
+
+  const enrollment = await createEnrollment({ user_id, course_id, source: ENROLLMENT_SOURCES.FREE })
+  return { enrollment, already_enrolled: false }
 }
 
 // ── Update progress (called by progress service) ───────────────────────────
@@ -117,6 +121,7 @@ const assignCourses = async ({ user_id, course_ids, note, assigned_by }) => {
     try {
       const [result] = await queries.createAssignedEnrollment({ user_id, course_id, assigned_by, note })
       await courseQueries.incrementEnrolledCount(course_id)
+      await invalidateCourseCache()
       assigned.push({ course_id, enrollment_id: result.insertId })
     } catch (err) {
       if (err.code === 'ER_DUP_ENTRY') {
@@ -167,6 +172,7 @@ const revokeEnrollment = async (enrollment_id) => {
 
   await queries.deleteEnrollmentById(enrollment_id)
   await courseQueries.decrementEnrolledCount(enrollment.course_id)
+  await invalidateCourseCache()
   return { id: enrollment.id, user_id: enrollment.user_id, course_id: enrollment.course_id }
 }
 
@@ -180,6 +186,7 @@ export {
   getMyEnrollments,
   checkEnrollment,
   createEnrollment,
+  enrollFree,
   updateProgress,
   getAllEnrollments,
   assignCourses,

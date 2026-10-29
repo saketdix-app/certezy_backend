@@ -26,6 +26,20 @@ const checkEnrollment = async (req, res, next) => {
   }
 }
 
+// ── POST /enrollments/free/:courseId — enrol in a free course ─────────────
+const enrollFree = async (req, res, next) => {
+  try {
+    const result = await service.enrollFree(req.user.id, req.params.courseId)
+    return success(res, {
+      statusCode: result.already_enrolled ? 200 : 201,
+      message: result.already_enrolled ? 'Already enrolled' : 'Enrolled successfully',
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ── GET /admin/enrollments — all enrollments (admin) ──────────────────────
 const getAllEnrollments = async (req, res, next) => {
   try {
@@ -90,6 +104,7 @@ const getAssignableCourses = async (req, res, next) => {
 }
 
 export {
+  enrollFree,
   getMyEnrollments,
   checkEnrollment,
   getAllEnrollments,

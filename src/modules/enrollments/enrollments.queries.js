@@ -31,11 +31,11 @@ const getEnrollment = (user_id, course_id) =>
 const getEnrollmentById = (id) => pool.query(`SELECT * FROM enrollments WHERE id = ? LIMIT 1`, [id])
 
 // ── Create enrollment (called internally by payment service) ──────────────
-const createEnrollment = ({ user_id, course_id, payment_id }) =>
+const createEnrollment = ({ user_id, course_id, payment_id, source = 'purchase' }) =>
   pool.query(
-    `INSERT INTO enrollments (user_id, course_id, payment_id)
-     VALUES (?, ?, ?)`,
-    [user_id, course_id, payment_id]
+    `INSERT INTO enrollments (user_id, course_id, payment_id, source)
+     VALUES (?, ?, ?, ?)`,
+    [user_id, course_id, payment_id ?? null, source]
   )
 
 // ── Create a free enrollment assigned by an admin / sub-admin ─────────────

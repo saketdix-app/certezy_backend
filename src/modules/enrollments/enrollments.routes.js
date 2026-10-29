@@ -21,6 +21,7 @@ router.delete('/admin/:id', ...canAssign, controller.revokeEnrollment)
 
 // ─── STUDENT ──────────────────────────────────────────────────
 router.get('/', authenticate, role('student'), controller.getMyEnrollments)
+router.post('/free/:courseId', authenticate, role('student'), controller.enrollFree)
 router.get('/:courseId', authenticate, role('student'), controller.checkEnrollment)
 
 export default router

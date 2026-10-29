@@ -1,6 +1,16 @@
 // src/middleware/validate.js
 
 import Joi from 'joi'
+import {
+  LESSON_TYPES,
+  COURSE_LEVELS,
+  COURSE_STATUSES,
+  PRICING_TYPES,
+  TEST_TYPES,
+  QUESTION_TYPES,
+  DIFFICULTIES,
+  ADMIN_REVIEW_SOURCES,
+} from '../constants.js'
 
 const validate = (schema) => {
   return (req, res, next) => {
@@ -21,21 +31,19 @@ const validate = (schema) => {
   }
 }
 
-// Lesson types the admin can create. 'text' and 'article' are both written
-// lessons (the admin UI uses 'text'); 'pdf' is a PDF document stored on S3.
-const LESSON_TYPES = ['video', 'text', 'article', 'pdf', 'quiz']
+// Shared password rule (register, change password, sub-admin creation)
+const strongPassword = Joi.string()
+  .min(8)
+  .max(72)
+  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`])/)
+  .messages({
+    'string.pattern.base': 'Password must have uppercase, lowercase, number and special character',
+  })
 
 const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().max(150).lowercase().required(),
-  password: Joi.string()
-    .min(8)
-    .max(72)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`])/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Password must have uppercase, lowercase, number and special character',
-    }),
+  password: strongPassword.required(),
 })
 
 const loginSchema = Joi.object({
@@ -45,17 +53,10 @@ const loginSchema = Joi.object({
 
 const changePasswordSchema = Joi.object({
   currentPassword: Joi.string().required(),
-  newPassword: Joi.string()
-    .min(8)
-    .max(72)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`])/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Password must have uppercase, lowercase, number and special character',
-    }),
+  newPassword: strongPassword.required(),
 })
 
-// category relted scema
+// ── Categories ───────────────────────────────────────────────────────────
 
 const createCategorySchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
@@ -76,44 +77,32 @@ const updateCategorySchema = Joi.object({
   sort_order: Joi.number().integer().optional(),
 })
 
-// courses related scemas
-const createCourseSchema = Joi.object({
-  title: Joi.string().min(3).max(200).required(),
-  slug: Joi.string().max(220).optional(),
-  description: Joi.string().optional(),
-  short_desc: Joi.string().max(500).optional(),
-  category_id: Joi.number().integer().required(),
-  thumbnail: Joi.string().max(500).allow('', null).optional(),
-  preview_video: Joi.string().max(500).allow('', null).optional(),
-  price: Joi.number().min(0).optional(),
-  level: Joi.string().valid('beginner', 'intermediate', 'advanced').optional(),
-  language: Joi.string().max(50).optional(),
-  status: Joi.string().valid('draft', 'published', 'archived').optional(),
-  is_featured: Joi.boolean().optional(),
-  requirements: Joi.string().optional(),
-  what_you_learn: Joi.string().optional(),
-  certificate_eligible: Joi.number().integer().valid(0, 1).optional(),
-})
+// ── Courses ──────────────────────────────────────────────────────────────
+const courseFields = {
+  title: Joi.string().trim().min(3).max(200),
+  slug: Joi.string().trim().max(220),
+  description: Joi.string().allow(''),
+  short_desc: Joi.string().max(500).allow(''),
+  category_id: Joi.number().integer(),
+  thumbnail: Joi.string().max(500).allow('', null),
+  preview_video: Joi.string().max(500).allow('', null),
+  pricing_type: Joi.string().valid(...PRICING_TYPES),
+  price: Joi.number().min(0).precision(2),
+  // List price shown struck-through; must be above `price` to count as a discount
+  original_price: Joi.number().min(0).precision(2).allow(null),
+  level: Joi.string().valid(...COURSE_LEVELS),
+  language: Joi.string().max(50),
+  status: Joi.string().valid(...COURSE_STATUSES),
+  is_featured: Joi.boolean(),
+  requirements: Joi.string().allow(''),
+  what_you_learn: Joi.string().allow(''),
+  certificate_eligible: Joi.number().integer().valid(0, 1),
+}
 
-const updateCourseSchema = Joi.object({
-  title: Joi.string().min(3).max(200).optional(),
-  slug: Joi.string().max(220).optional(),
-  description: Joi.string().optional(),
-  short_desc: Joi.string().max(500).optional(),
-  category_id: Joi.number().integer().optional(),
-  thumbnail: Joi.string().max(500).allow('', null).optional(),
-  preview_video: Joi.string().max(500).allow('', null).optional(),
-  price: Joi.number().min(0).optional(),
-  level: Joi.string().valid('beginner', 'intermediate', 'advanced').optional(),
-  language: Joi.string().max(50).optional(),
-  status: Joi.string().valid('draft', 'published', 'archived').optional(),
-  is_featured: Joi.boolean().optional(),
-  requirements: Joi.string().optional(),
-  what_you_learn: Joi.string().optional(),
-  certificate_eligible: Joi.number().integer().valid(0, 1).optional(),
-})
+const createCourseSchema = Joi.object(courseFields).fork(['title', 'category_id'], (f) => f.required())
+const updateCourseSchema = Joi.object(courseFields)
 
-//section releted schemas
+// ── Sections ─────────────────────────────────────────────────────────────
 const createSectionSchema = Joi.object({
   course_id: Joi.number().integer().required(),
   title: Joi.string().min(2).max(200).required(),
@@ -125,7 +114,7 @@ const updateSectionSchema = Joi.object({
   order_num: Joi.number().integer().optional(),
 })
 
-// lessson related scema
+// ── Lessons ──────────────────────────────────────────────────────────────
 
 const createLessonSchema = Joi.object({
   section_id: Joi.number().integer().required(),
@@ -133,7 +122,7 @@ const createLessonSchema = Joi.object({
   type: Joi.string()
     .valid(...LESSON_TYPES)
     .optional(),
-  content: Joi.string().optional(),
+  content: Joi.string().allow('').optional(),
   duration: Joi.number().integer().optional(),
   order_num: Joi.number().integer().optional(),
   is_free: Joi.number().integer().valid(0, 1).optional(),
@@ -144,7 +133,7 @@ const updateLessonSchema = Joi.object({
   type: Joi.string()
     .valid(...LESSON_TYPES)
     .optional(),
-  content: Joi.string().optional(),
+  content: Joi.string().allow('').optional(),
   duration: Joi.number().integer().optional(),
   order_num: Joi.number().integer().optional(),
   is_free: Joi.number().integer().valid(0, 1).optional(),
@@ -155,7 +144,9 @@ const createTestSchema = Joi.object({
   course_id: Joi.number().integer().required(),
   lesson_id: Joi.number().integer().optional(),
   title: Joi.string().min(2).max(200).required(),
-  type: Joi.string().valid('practice', 'mock', 'diagnostic', 'final').optional(),
+  type: Joi.string()
+    .valid(...TEST_TYPES)
+    .optional(),
   duration: Joi.number().integer().optional(),
   pass_percentage: Joi.number().integer().min(1).max(100).optional(),
   status: Joi.string().valid('active', 'inactive').optional(),
@@ -163,7 +154,9 @@ const createTestSchema = Joi.object({
 
 const updateTestSchema = Joi.object({
   title: Joi.string().min(2).max(200).optional(),
-  type: Joi.string().valid('practice', 'mock', 'diagnostic', 'final').optional(),
+  type: Joi.string()
+    .valid(...TEST_TYPES)
+    .optional(),
   duration: Joi.number().integer().optional(),
   pass_percentage: Joi.number().integer().min(1).max(100).optional(),
   status: Joi.string().valid('active', 'inactive').optional(),
@@ -173,18 +166,26 @@ const updateTestSchema = Joi.object({
 const createQuestionSchema = Joi.object({
   test_id: Joi.number().integer().required(),
   question: Joi.string().required(),
-  type: Joi.string().valid('single', 'multiple', 'true_false').optional(),
+  type: Joi.string()
+    .valid(...QUESTION_TYPES)
+    .optional(),
   explanation: Joi.string().optional(),
-  difficulty: Joi.string().valid('easy', 'medium', 'hard').optional(),
+  difficulty: Joi.string()
+    .valid(...DIFFICULTIES)
+    .optional(),
   topic_tag: Joi.string().max(100).optional(),
   order_num: Joi.number().integer().optional(),
 })
 
 const updateQuestionSchema = Joi.object({
   question: Joi.string().optional(),
-  type: Joi.string().valid('single', 'multiple', 'true_false').optional(),
+  type: Joi.string()
+    .valid(...QUESTION_TYPES)
+    .optional(),
   explanation: Joi.string().optional(),
-  difficulty: Joi.string().valid('easy', 'medium', 'hard').optional(),
+  difficulty: Joi.string()
+    .valid(...DIFFICULTIES)
+    .optional(),
   topic_tag: Joi.string().max(100).optional(),
   order_num: Joi.number().integer().optional(),
 })
@@ -217,17 +218,57 @@ const updateOptionSchema = Joi.object({
   order_num: Joi.number().integer().optional(),
 })
 
+// ── Reviews ──────────────────────────────────────────────────────────────
+const reviewSchema = Joi.object({
+  course_id: Joi.number().integer().positive().required(),
+  rating: Joi.number().integer().min(1).max(5).required(),
+  comment: Joi.string().trim().max(1000).allow('', null).optional(),
+})
+
+const updateReviewSchema = Joi.object({
+  rating: Joi.number().integer().min(1).max(5).required(),
+  comment: Joi.string().trim().max(1000).allow('', null).optional(),
+})
+
+// Admin-entered review: a genuine review collected outside the site
+// (classroom batch, corporate training, another platform, feedback form)
+const adminReviewFields = {
+  course_id: Joi.number().integer().positive(),
+  reviewer_name: Joi.string().trim().min(2).max(100),
+  rating: Joi.number().integer().min(1).max(5),
+  comment: Joi.string().trim().max(2000).allow('', null),
+  source: Joi.string().valid(...ADMIN_REVIEW_SOURCES),
+  source_note: Joi.string().trim().max(255).allow('', null),
+  reviewed_at: Joi.date().iso().max('now').allow(null, ''),
+  is_approved: Joi.number().integer().valid(0, 1).default(1),
+}
+const createAdminReviewSchema = Joi.object({
+  ...adminReviewFields,
+  // The admin confirms this review really came from a learner
+  confirm_genuine: Joi.boolean().valid(true).required().messages({
+    'any.only': 'Please confirm this is a genuine review from a real learner',
+    'any.required': 'Please confirm this is a genuine review from a real learner',
+  }),
+}).fork(['course_id', 'reviewer_name', 'rating', 'source'], (f) => f.required())
+const updateAdminReviewSchema = Joi.object(adminReviewFields)
+
+// ── CSV import ──────────────────────────────────────────────────────────
+const csvImportSchema = Joi.object({
+  csv: Joi.string()
+    .min(1)
+    .max(5 * 1024 * 1024)
+    .required(), // raw CSV text (≤ 5 MB)
+  dry_run: Joi.boolean().default(false),
+  // courses only: create a category when the CSV names one that doesn't exist
+  create_missing_categories: Joi.boolean().default(true),
+  // reviews only: admin confirms every row is a genuine learner review
+  confirm_genuine: Joi.boolean().default(false),
+})
+
 const createSubAdminSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().max(150).lowercase().required(),
-  password: Joi.string()
-    .min(8)
-    .max(72)
-    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`])/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Password must have uppercase, lowercase, number and special character',
-    }),
+  password: strongPassword.required(),
   can_manage_courses: Joi.number().integer().valid(0, 1).optional(),
   can_manage_students: Joi.number().integer().valid(0, 1).optional(),
   can_send_discounts: Joi.number().integer().valid(0, 1).optional(),
@@ -251,6 +292,11 @@ const schemas = {
     isPublic: Joi.boolean().optional().default(true),
   }),
   login: loginSchema,
+  createReview: reviewSchema,
+  updateReview: updateReviewSchema,
+  createAdminReview: createAdminReviewSchema,
+  updateAdminReview: updateAdminReviewSchema,
+  csvImport: csvImportSchema,
   changePassword: changePasswordSchema,
   createCategory: createCategorySchema,
   updateCategory: updateCategorySchema,

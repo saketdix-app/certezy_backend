@@ -3,6 +3,7 @@
 // Each step checks INFORMATION_SCHEMA first, so running it repeatedly is safe.
 
 import { pool } from './db.js'
+import { LESSON_TYPES } from '../constants.js'
 
 const columnInfo = async (table, column) => {
   const [rows] = await pool.query(
@@ -52,8 +53,21 @@ const tableExists = async (table) => {
   return rows.length > 0
 }
 
-// Values the lessons.type column must accept (see LESSON_TYPES in validate.js)
-const LESSON_TYPES = ['video', 'text', 'article', 'pdf', 'quiz']
+// Widen an ENUM column so it accepts every value in `wanted` (keeps existing ones).
+// VARCHAR columns already accept anything, so they are left alone.
+const ensureEnumValues = async (table, column, wanted) => {
+  const col = await columnInfo(table, column)
+  if (!col || !col.COLUMN_TYPE.toLowerCase().startsWith('enum(')) return false
+  const current = [...col.COLUMN_TYPE.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'"))
+  const missing = wanted.filter((v) => !current.includes(v))
+  if (!missing.length) return false
+  const values = [...current, ...missing].map((v) => pool.escape(v)).join(', ')
+  const nullable = col.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
+  const def =
+    col.COLUMN_DEFAULT != null ? ` DEFAULT ${pool.escape(col.COLUMN_DEFAULT.replace(/^'|'$/g, ''))}` : ''
+  await pool.query(`ALTER TABLE \`${table}\` MODIFY \`${column}\` ENUM(${values}) ${nullable}${def}`)
+  return true
+}
 
 const STEPS = [
   {
@@ -80,18 +94,15 @@ const STEPS = [
     },
   },
   {
-    name: "lessons.type accepts 'text' and 'pdf' lessons",
+    name: 'lessons.type accepts every LESSON_TYPES value (text, pdf, link, embed, audio…)',
+    run: () => ensureEnumValues('lessons', 'type', LESSON_TYPES),
+  },
+  {
+    name: 'lessons.content can hold long rich text',
     run: async () => {
-      const col = await columnInfo('lessons', 'type')
-      if (!col || !col.COLUMN_TYPE.toLowerCase().startsWith('enum(')) return false // VARCHAR: nothing to do
-      const current = [...col.COLUMN_TYPE.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'"))
-      const missing = LESSON_TYPES.filter((t) => !current.includes(t))
-      if (!missing.length) return false
-      const values = [...current, ...missing].map((v) => pool.escape(v)).join(', ')
-      const nullable = col.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
-      const def =
-        col.COLUMN_DEFAULT != null ? ` DEFAULT ${pool.escape(col.COLUMN_DEFAULT.replace(/^'|'$/g, ''))}` : ''
-      await pool.query(`ALTER TABLE lessons MODIFY \`type\` ENUM(${values}) ${nullable}${def}`)
+      const col = await columnInfo('lessons', 'content')
+      if (!col || /mediumtext|longtext/i.test(col.COLUMN_TYPE)) return false
+      await pool.query('ALTER TABLE lessons MODIFY content MEDIUMTEXT NULL')
       return true
     },
   },
@@ -116,6 +127,57 @@ const STEPS = [
   {
     name: 'enrollments.note',
     run: () => addColumnIfMissing('enrollments', 'note', 'VARCHAR(255) NULL'),
+  },
+  {
+    name: 'courses.pricing_type (free | paid)',
+    run: async () => {
+      const added = await addColumnIfMissing(
+        'courses',
+        'pricing_type',
+        "ENUM('free','paid') NOT NULL DEFAULT 'paid' AFTER price"
+      )
+      // Existing ₹0/$0 courses become explicit free courses
+      if (added) await pool.query("UPDATE courses SET pricing_type = 'free' WHERE price <= 0")
+      return added
+    },
+  },
+  {
+    name: 'courses.original_price (list price for discounted courses)',
+    run: () => addColumnIfMissing('courses', 'original_price', 'DECIMAL(10,2) NULL AFTER price'),
+  },
+  {
+    name: 'reviews.user_id nullable (reviews entered by an admin have no student account)',
+    run: async () => {
+      const col = await columnInfo('reviews', 'user_id')
+      if (!col || col.IS_NULLABLE === 'YES') return false
+      await pool.query(`ALTER TABLE reviews MODIFY user_id ${col.COLUMN_TYPE} NULL`)
+      return true
+    },
+  },
+  {
+    name: 'reviews.source (platform | classroom | corporate | other_platform | feedback_form)',
+    run: () => addColumnIfMissing('reviews', 'source', "VARCHAR(20) NOT NULL DEFAULT 'platform'"),
+  },
+  {
+    name: 'reviews.reviewer_name (name shown for admin-entered reviews)',
+    run: () => addColumnIfMissing('reviews', 'reviewer_name', 'VARCHAR(100) NULL'),
+  },
+  {
+    name: 'reviews.source_note (e.g. "PMP weekend batch, Pune — Mar 2025")',
+    run: () => addColumnIfMissing('reviews', 'source_note', 'VARCHAR(255) NULL'),
+  },
+  {
+    name: 'reviews.reviewed_at (original review date)',
+    run: () => addColumnIfMissing('reviews', 'reviewed_at', 'DATE NULL'),
+  },
+  {
+    name: 'reviews.created_by (admin who entered the review)',
+    run: () => addColumnIfMissing('reviews', 'created_by', 'INT NULL'),
+  },
+  {
+    name: 'reviews.updated_at (students can edit their review)',
+    run: () =>
+      addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
 ]
 

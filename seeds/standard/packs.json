@@ -1,0 +1,49 @@
+{
+  "_note": "Generated standard course packs. Imported as draft + free; set price/thumbnail and publish from the admin.",
+  "packs": [
+    {
+      "id": "aws-cloud-practitioner",
+      "provider": "AWS",
+      "exam": "CLF-C02",
+      "title": "AWS Certified Cloud Practitioner (CLF-C02)",
+      "level": "beginner",
+      "course_slug": "aws-certified-cloud-practitioner-clf-c02",
+      "sections": 6,
+      "lessons": 13,
+      "questions": 12
+    },
+    {
+      "id": "aws-solutions-architect-associate",
+      "provider": "AWS",
+      "exam": "SAA-C03",
+      "title": "AWS Certified Solutions Architect \u2013 Associate (SAA-C03)",
+      "level": "intermediate",
+      "course_slug": "aws-certified-solutions-architect-associate-saa-c03",
+      "sections": 6,
+      "lessons": 8,
+      "questions": 12
+    },
+    {
+      "id": "azure-fundamentals",
+      "provider": "Azure",
+      "exam": "AZ-900",
+      "title": "Microsoft Azure Fundamentals (AZ-900)",
+      "level": "beginner",
+      "course_slug": "microsoft-azure-fundamentals-az-900",
+      "sections": 5,
+      "lessons": 7,
+      "questions": 11
+    },
+    {
+      "id": "azure-administrator",
+      "provider": "Azure",
+      "exam": "AZ-104",
+      "title": "Microsoft Azure Administrator (AZ-104)",
+      "level": "intermediate",
+      "course_slug": "microsoft-azure-administrator-az-104",
+      "sections": 7,
+      "lessons": 8,
+      "questions": 11
+    }
+  ]
+}
