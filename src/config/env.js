@@ -142,6 +142,12 @@ const env = {
     mode: process.env.PAYPAL_MODE || 'sandbox',
   },
 
+  // Reviews — when true, star ratings/reviews go live immediately; when false
+  // (default) an admin approves them first from Admin → Reviews.
+  reviews: {
+    autoApprove: process.env.REVIEW_AUTO_APPROVE === 'true',
+  },
+
   // Frontend / CORS
   frontendUrl,
   corsOrigins: [...new Set([frontendUrl, ...toList(process.env.CORS_ORIGINS)])],

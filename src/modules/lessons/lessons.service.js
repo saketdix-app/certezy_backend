@@ -2,6 +2,7 @@
 
 import * as queries from './lessons.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
+import { invalidateCourseCache } from '../courses/courses.service.js'
 
 // ── Get all lessons by section_id ──────────────────────────────────────────
 const getLessonsBySectionId = async (section_id) => {
@@ -100,6 +101,7 @@ const updateCourseMeta = async (section_id) => {
     total_lessons: meta[0].total_lessons,
     total_duration: meta[0].total_duration,
   })
+  await invalidateCourseCache()
 }
 
 export {

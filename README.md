@@ -78,7 +78,7 @@ Certezy is a full-featured online learning and certification backend — similar
 ### 📚 Course Management
 - Categories with parent-child support
 - Course CRUD with draft / published / archived status
-- Sections and lessons (video / article / quiz)
+- Sections and lessons (video incl. YouTube/Vimeo, text, PDF, link, embed, audio, quiz)
 - Free preview lessons (no login needed)
 - Full-text search on courses
 
@@ -106,8 +106,20 @@ Certezy is a full-featured online learning and certification backend — similar
 - PDF stored on S3
 
 ### ⭐ Reviews & Ratings
-- Students rate courses after enrollment
-- Auto-update average rating on course
+- Enrolled students rate courses 1–5★ (optional comment) and can edit their review
+- Admin moderation, or instant publishing with `REVIEW_AUTO_APPROVE=true`
+- Average, count and 1–5★ distribution recalculated on every change; course caches cleared
+
+### 📥 Bulk CSV Import & Standard Courses
+- Import courses, sections/lessons and quizzes (single, multiple-choice, true/false) from CSV
+- Downloadable sample CSVs, dry-run preview, row-level errors, all-or-nothing transactions
+- Bundled AWS (CLF-C02, SAA-C03) and Azure (AZ-900, AZ-104) course packs
+- See [docs/CSV_IMPORT.md](docs/CSV_IMPORT.md)
+
+### 💲 Pricing
+- Free, paid and discounted courses (`pricing_type`, `price`, `original_price`)
+- Free courses: instant enrolment via `POST /enrollments/free/:courseId`
+- Checkout amounts are always computed server-side (client-sent prices are ignored)
 
 ### 🔔 Notifications
 - In-app notifications for every key event
@@ -315,10 +327,12 @@ const user = await findUserByEmail(email);
 | 21 | `notifications` | In-app alerts |
 | 22 | `contacts` | User and guest contact queries |
 
-**Import schema:**
+**Fresh database:**
 ```bash
-mysql -u root -p your_database_name < schema.sql
+mysql -u root -p your_database_name < docs/schema.sql
 ```
+Existing databases need nothing — new columns are added automatically at startup
+(`src/config/migrate.js`, idempotent).
 
 ---
 

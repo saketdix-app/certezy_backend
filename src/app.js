@@ -29,6 +29,7 @@ import reviewRoutes from './modules/reviews/reviews.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
+import importRoutes from './modules/imports/imports.routes.js'
 
 const API_PREFIX = '/api/v1'
 
@@ -51,6 +52,7 @@ const ROUTES = [
   ['/admin', adminRoutes],
   ['/contact', contactRoutes],
   ['/upload', uploadRoutes],
+  ['/imports', importRoutes],
 ]
 
 const app = express()

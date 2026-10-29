@@ -27,7 +27,7 @@ const razorpayVerify = async (req, res, next) => {
 const razorpayWebhook = async (req, res, next) => {
   try {
     const signature = req.headers['x-razorpay-signature']
-    const result = await service.razorpayWebhook(req.rawBody, signature, req.body)
+    const result = await service.razorpayWebhook(req.body, signature) // req.body is the raw Buffer (express.raw)
     return success(res, { message: 'Webhook received', data: result })
   } catch (err) {
     next(err)

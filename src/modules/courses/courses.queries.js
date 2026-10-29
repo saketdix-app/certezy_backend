@@ -3,21 +3,11 @@
 import { pool } from '../../config/db.js'
 
 // ── Allowed sort fields — SQL injection se bachao ──────────────────────────
-const ALLOWED_SORT = ['price', 'created_at', 'rating_avg', 'enrolled_count', 'title']
+const ALLOWED_SORT = ['price', 'created_at', 'rating_avg', 'rating_count', 'enrolled_count', 'title']
 const ALLOWED_ORDER = ['ASC', 'DESC']
 
-// ── Get all published courses (with filters + pagination + sorting) ─────────
-const getAllCourses = ({
-  limit,
-  offset,
-  status,
-  category_id,
-  level,
-  is_featured,
-  search,
-  sortBy = 'created_at',
-  sortOrder = 'DESC',
-}) => {
+// ── Shared WHERE builder for list + count ─────────────────────────────────
+const buildFilters = ({ status, category_id, level, is_featured, search, pricing }) => {
   const conditions = []
   const values = []
 
@@ -27,7 +17,6 @@ const getAllCourses = ({
   } else {
     conditions.push("c.status = 'published'")
   }
-
   if (category_id) {
     conditions.push('c.category_id = ?')
     values.push(category_id)
@@ -36,75 +25,61 @@ const getAllCourses = ({
     conditions.push('c.level = ?')
     values.push(level)
   }
-  if (is_featured !== undefined) {
+  if (is_featured !== undefined && is_featured !== '') {
     conditions.push('c.is_featured = ?')
-    values.push(is_featured)
+    values.push(is_featured === 'true' || is_featured === '1' || is_featured === true ? 1 : 0)
   }
-
+  if (pricing === 'free') {
+    conditions.push("(c.pricing_type = 'free' OR c.price <= 0)")
+  } else if (pricing === 'paid') {
+    conditions.push("(c.pricing_type = 'paid' AND c.price > 0)")
+  } else if (pricing === 'discounted') {
+    conditions.push("(c.pricing_type = 'paid' AND c.original_price > c.price)")
+  }
   if (search) {
-    conditions.push('MATCH(c.title, c.description, c.short_desc) AGAINST(? IN BOOLEAN MODE)')
-    values.push(`${search}*`)
+    // Full-text for words, LIKE fallback so short terms ("AZ", "PMP") still match
+    conditions.push(
+      '(MATCH(c.title, c.description, c.short_desc) AGAINST(? IN BOOLEAN MODE) OR c.title LIKE ?)'
+    )
+    values.push(`${search}*`, `%${search}%`)
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  return { where: `WHERE ${conditions.join(' AND ')}`, values }
+}
 
-  // SQL injection se bachao — whitelist check
+const LIST_COLUMNS = `
+  c.id, c.title, c.slug, c.short_desc, c.thumbnail,
+  c.price, c.original_price, c.pricing_type,
+  c.level, c.language, c.status, c.is_featured,
+  c.total_duration, c.total_lessons, c.enrolled_count,
+  c.rating_avg, c.rating_count, c.certificate_eligible,
+  c.created_at,
+  cat.id AS category_id, cat.name AS category_name, cat.slug AS category_slug,
+  u.id AS instructor_id, u.name AS instructor_name`
+
+// ── Get courses (filters + pagination + sorting) ───────────────────────────
+const getAllCourses = ({ limit, offset, sortBy = 'created_at', sortOrder = 'DESC', ...filters }) => {
+  const { where, values } = buildFilters(filters)
+
+  // Whitelisted sort — never interpolate user input directly
   const finalSort = ALLOWED_SORT.includes(sortBy) ? `c.${sortBy}` : 'c.created_at'
   const finalOrder = ALLOWED_ORDER.includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC'
 
-  values.push(Number(limit), Number(offset))
-
   return pool.query(
-    `SELECT
-       c.id, c.title, c.slug, c.short_desc, c.thumbnail,
-       c.price, c.level, c.language, c.status, c.is_featured,
-       c.total_duration, c.total_lessons, c.enrolled_count,
-       c.rating_avg, c.rating_count, c.certificate_eligible,
-       c.created_at,
-       cat.id AS category_id, cat.name AS category_name,
-       u.id AS instructor_id, u.name AS instructor_name
+    `SELECT ${LIST_COLUMNS}
      FROM courses c
      LEFT JOIN categories cat ON cat.id = c.category_id
      LEFT JOIN users u ON u.id = c.created_by
      ${where}
-     ORDER BY ${finalSort} ${finalOrder}
+     ORDER BY ${finalSort} ${finalOrder}, c.id DESC
      LIMIT ? OFFSET ?`,
-    values
+    [...values, Number(limit), Number(offset)]
   )
 }
 
-// ── Count total courses (for pagination) ───────────────────────────────────
-const countCourses = ({ status, category_id, level, is_featured, search }) => {
-  const conditions = []
-  const values = []
-
-  if (status) {
-    conditions.push('c.status = ?')
-    values.push(status)
-  } else {
-    conditions.push("c.status = 'published'")
-  }
-
-  if (category_id) {
-    conditions.push('c.category_id = ?')
-    values.push(category_id)
-  }
-  if (level) {
-    conditions.push('c.level = ?')
-    values.push(level)
-  }
-  if (is_featured !== undefined) {
-    conditions.push('c.is_featured = ?')
-    values.push(is_featured)
-  }
-
-  if (search) {
-    conditions.push('MATCH(c.title, c.description, c.short_desc) AGAINST(? IN BOOLEAN MODE)')
-    values.push(`${search}*`)
-  }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-
+// ── Count courses (for pagination) ─────────────────────────────────────────
+const countCourses = (filters) => {
+  const { where, values } = buildFilters(filters)
   return pool.query(`SELECT COUNT(*) AS total FROM courses c ${where}`, values)
 }
 
@@ -113,7 +88,7 @@ const getCourseBySlug = (slug) =>
   pool.query(
     `SELECT
        c.*,
-       cat.id AS category_id, cat.name AS category_name,
+       cat.id AS category_id, cat.name AS category_name, cat.slug AS category_slug,
        u.id AS instructor_id, u.name AS instructor_name
      FROM courses c
      LEFT JOIN categories cat ON cat.id = c.category_id
@@ -128,7 +103,7 @@ const getCourseById = (id) =>
   pool.query(
     `SELECT
        c.*,
-       cat.id AS category_id, cat.name AS category_name,
+       cat.id AS category_id, cat.name AS category_name, cat.slug AS category_slug,
        u.id AS instructor_id, u.name AS instructor_name
      FROM courses c
      LEFT JOIN categories cat ON cat.id = c.category_id
@@ -164,6 +139,8 @@ const createCourse = ({
   thumbnail,
   preview_video,
   price,
+  original_price,
+  pricing_type,
   level,
   language,
   status,
@@ -176,10 +153,10 @@ const createCourse = ({
   pool.query(
     `INSERT INTO courses
        (title, slug, description, short_desc, category_id,
-        thumbnail, preview_video, price, level, language,
+        thumbnail, preview_video, price, original_price, pricing_type, level, language,
         status, is_featured, requirements, what_you_learn,
         certificate_eligible, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       title,
       slug,
@@ -189,6 +166,8 @@ const createCourse = ({
       thumbnail ?? null,
       preview_video ?? null,
       price ?? 0.0,
+      original_price ?? null,
+      pricing_type ?? 'paid',
       level ?? 'beginner',
       language ?? 'English',
       status ?? 'draft',
@@ -212,6 +191,8 @@ const updateCourse = (
     thumbnail,
     preview_video,
     price,
+    original_price,
+    pricing_type,
     level,
     language,
     status,
@@ -225,7 +206,7 @@ const updateCourse = (
     `UPDATE courses
      SET title = ?, slug = ?, description = ?, short_desc = ?,
          category_id = ?, thumbnail = ?, preview_video = ?,
-         price = ?, level = ?, language = ?, status = ?,
+         price = ?, original_price = ?, pricing_type = ?, level = ?, language = ?, status = ?,
          is_featured = ?, requirements = ?, what_you_learn = ?,
          certificate_eligible = ?
      WHERE id = ?`,
@@ -238,6 +219,8 @@ const updateCourse = (
       thumbnail,
       preview_video,
       price,
+      original_price,
+      pricing_type,
       level,
       language,
       status,
