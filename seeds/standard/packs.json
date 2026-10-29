@@ -1,5 +1,5 @@
 {
-  "_note": "Generated standard course packs. Imported as draft + free; set price/thumbnail and publish from the admin.",
+  "_note": "Standard course packs (published, free). Re-importing updates them. YouTube videos verified embeddable via oEmbed.",
   "packs": [
     {
       "id": "aws-cloud-practitioner",
@@ -8,19 +8,19 @@
       "title": "AWS Certified Cloud Practitioner (CLF-C02)",
       "level": "beginner",
       "course_slug": "aws-certified-cloud-practitioner-clf-c02",
-      "sections": 6,
-      "lessons": 13,
+      "sections": 7,
+      "lessons": 14,
       "questions": 12
     },
     {
       "id": "aws-solutions-architect-associate",
       "provider": "AWS",
       "exam": "SAA-C03",
-      "title": "AWS Certified Solutions Architect \u2013 Associate (SAA-C03)",
+      "title": "AWS Certified Solutions Architect – Associate (SAA-C03)",
       "level": "intermediate",
       "course_slug": "aws-certified-solutions-architect-associate-saa-c03",
-      "sections": 6,
-      "lessons": 8,
+      "sections": 7,
+      "lessons": 9,
       "questions": 12
     },
     {
@@ -30,8 +30,8 @@
       "title": "Microsoft Azure Fundamentals (AZ-900)",
       "level": "beginner",
       "course_slug": "microsoft-azure-fundamentals-az-900",
-      "sections": 5,
-      "lessons": 7,
+      "sections": 6,
+      "lessons": 8,
       "questions": 11
     },
     {
@@ -41,9 +41,20 @@
       "title": "Microsoft Azure Administrator (AZ-104)",
       "level": "intermediate",
       "course_slug": "microsoft-azure-administrator-az-104",
-      "sections": 7,
-      "lessons": 8,
+      "sections": 8,
+      "lessons": 9,
       "questions": 11
+    },
+    {
+      "id": "certezy-catalog",
+      "provider": "Certezy",
+      "exam": "19 courses",
+      "title": "Certezy catalog — one free course per category",
+      "level": "mixed",
+      "course_slug": null,
+      "sections": 4,
+      "lessons": 86,
+      "questions": 95
     }
   ]
 }

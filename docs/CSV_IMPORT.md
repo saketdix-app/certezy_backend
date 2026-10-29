@@ -93,15 +93,18 @@ batches, corporate training, another platform (Udemy, Google…), feedback forms
 | `aws-solutions-architect-associate` | SAA-C03 |
 | `azure-fundamentals` | AZ-900 |
 | `azure-administrator` | AZ-104 |
+| `certezy-catalog` | 19 courses — one per site category: Google Cloud, Security+, CEH, CISSP, Docker, Kubernetes, Jenkins, Python, Machine Learning, Power BI, Agile & Scrum, PRINCE2, CCNA, Network+, ITIL 4, ServiceNow, JavaScript, React, System Design |
+
+Every pack has a text overview, free full-length YouTube video courses (verified embeddable), official resource links and a practice quiz. Course categories match the site's subcategories (e.g. `Amazon AWS`, `Docker`); missing ones are created.
 
 Import from the admin page, or from the server:
 
 ```bash
-npm run seed:standard                       # all packs
+npm run seed:standard                       # all packs (same as Admin → Import all)
 npm run seed:standard -- azure-fundamentals # one pack
 ```
 
-Packs import as **draft + free**. Review the content, add a thumbnail, set the
+Packs import as **published + free** (PMP and other existing courses are untouched). Add thumbnails or change the
 price and publish. Exam domains/weights follow the official exam guides; check
 them before publishing because AWS and Microsoft update exams periodically.
 
