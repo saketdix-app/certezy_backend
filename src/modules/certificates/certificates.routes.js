@@ -7,8 +7,12 @@ import role from '../../middleware/role.js'
 
 const router = Router()
 
+// ─── PUBLIC ───────────────────────────────────────────────────
+router.get('/verify/:certificateNo', controller.verifyCertificate)
+
 // ─── STUDENT ──────────────────────────────────────────────────
 router.get('/', authenticate, role('student'), controller.getMyCertificates)
+router.post('/claim/:courseId', authenticate, role('student'), controller.claimCertificate)
 
 // ─── ADMIN ────────────────────────────────────────────────────
 router.post('/issue', authenticate, role('admin', 'sub_admin'), controller.adminIssueCertificate)

@@ -5,6 +5,7 @@ import * as testQueries from '../tests/tests.queries.js'
 import * as optionQueries from '../options/options.queries.js'
 import * as questionService from '../questions/questions.service.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
+import { autoIssueOnCompletion } from '../certificates/certificates.service.js'
 
 // ── Start attempt ──────────────────────────────────────────────────────────
 const startAttempt = async (user_id, test_id) => {
@@ -133,6 +134,10 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     is_passed,
   })
 
+  // Passing a final test may finish the course → certificate
+  const certificate =
+    is_passed && test.type === 'final' ? await autoIssueOnCompletion(user_id, test.course_id) : null
+
   return {
     attempt_id,
     score,
@@ -141,6 +146,7 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     time_taken,
     is_passed: !!is_passed,
     pass_percentage: test.pass_percentage,
+    certificate,
   }
 }
 

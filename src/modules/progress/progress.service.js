@@ -3,6 +3,7 @@
 import * as queries from './progress.queries.js'
 import * as lessonQueries from '../lessons/lessons.queries.js'
 import * as enrollmentService from '../enrollments/enrollments.service.js'
+import { autoIssueOnCompletion } from '../certificates/certificates.service.js'
 
 // ── Update lesson progress ─────────────────────────────────────────────────
 const updateLessonProgress = async (user_id, lesson_id, { is_completed, watch_time }) => {
@@ -42,12 +43,16 @@ const updateLessonProgress = async (user_id, lesson_id, { is_completed, watch_ti
   // Enrollment progress update karo
   await enrollmentService.updateProgress(user_id, course_id, progress)
 
+  // Course finished → certificate issued automatically (null if not eligible yet)
+  const certificate = progress >= 100 ? await autoIssueOnCompletion(user_id, course_id) : null
+
   return {
     lesson_id,
     course_id,
     is_completed: !!is_completed,
     watch_time: watch_time ?? 0,
     overall_progress: progress,
+    certificate,
   }
 }
 

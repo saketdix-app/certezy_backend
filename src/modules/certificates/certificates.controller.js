@@ -38,4 +38,24 @@ const getAllCertificates = async (req, res, next) => {
   }
 }
 
-export { getMyCertificates, adminIssueCertificate, getAllCertificates }
+// ── POST /certificates/claim/:courseId — my certificate for a finished course
+const claimCertificate = async (req, res, next) => {
+  try {
+    const certificate = await service.claimCertificate(req.user.id, Number(req.params.courseId))
+    return success(res, { message: 'Certificate ready', data: { certificate } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /certificates/verify/:certificateNo — public verification ──────────
+const verifyCertificate = async (req, res, next) => {
+  try {
+    const certificate = await service.verifyCertificate(req.params.certificateNo)
+    return success(res, { message: 'Certificate is valid', data: { certificate } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export { getMyCertificates, claimCertificate, verifyCertificate, adminIssueCertificate, getAllCertificates }
