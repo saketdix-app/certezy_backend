@@ -5,7 +5,7 @@ import * as testQueries from '../tests/tests.queries.js'
 import * as optionQueries from '../options/options.queries.js'
 import * as questionService from '../questions/questions.service.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
-import { autoIssueOnCompletion } from '../certificates/certificates.service.js'
+import { hasCertificate, issueOrReissueOnPass } from '../certificates/certificates.service.js'
 import { updateLessonProgress } from '../progress/progress.service.js'
 
 // ── Start attempt ──────────────────────────────────────────────────────────
@@ -153,19 +153,23 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     is_passed,
   })
 
-  // A passed test that belongs to a quiz lesson completes that lesson (which
-  // may finish the course); passing a final test may finish the course too.
+  // On a pass: a test that belongs to a quiz lesson completes that lesson (which
+  // may finish the course). Then the certificate is issued if the course is now
+  // complete — or, if the student already had one, reissued with today's date.
   let certificate = null
-  if (is_passed && test.lesson_id) {
-    try {
-      const progress = await updateLessonProgress(user_id, test.lesson_id, { is_completed: 1, watch_time: 0 })
-      certificate = progress.certificate
-    } catch (err) {
-      console.error(`Could not complete lesson ${test.lesson_id} after test ${test.id}:`, err.message)
+  let certificate_reissued = false
+  if (is_passed) {
+    const hadCertificate = await hasCertificate(user_id, test.course_id).catch(() => false)
+    if (test.lesson_id) {
+      try {
+        await updateLessonProgress(user_id, test.lesson_id, { is_completed: 1, watch_time: 0 })
+      } catch (err) {
+        console.error(`Could not complete lesson ${test.lesson_id} after test ${test.id}:`, err.message)
+      }
     }
-  }
-  if (!certificate && is_passed && test.type === 'final') {
-    certificate = await autoIssueOnCompletion(user_id, test.course_id)
+    const result = await issueOrReissueOnPass(user_id, test.course_id, { issuedBefore: hadCertificate })
+    certificate = result.certificate
+    certificate_reissued = result.reissued
   }
 
   return {
@@ -178,6 +182,7 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     pass_percentage: test.pass_percentage,
     review,
     certificate,
+    certificate_reissued,
   }
 }
 

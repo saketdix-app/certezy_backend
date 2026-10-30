@@ -40,7 +40,9 @@ const upsertLessonProgress = (user_id, lesson_id, { is_completed, watch_time }) 
      ON DUPLICATE KEY UPDATE
        -- a completed lesson stays completed (a later periodic sync sends 0)
        is_completed = GREATEST(is_completed, VALUES(is_completed)),
-       watch_time   = GREATEST(watch_time, VALUES(watch_time))`,
+       watch_time   = GREATEST(watch_time, VALUES(watch_time)),
+       -- always bumped so the player can reopen the last lesson the student was on
+       last_watched = CURRENT_TIMESTAMP`,
     [user_id, lesson_id, is_completed ?? 0, watch_time ?? 0]
   )
 
