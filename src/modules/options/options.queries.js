@@ -13,6 +13,15 @@ const getOptionsByQuestionId = (question_id) =>
 const getOptionById = (id) => pool.query('SELECT * FROM options WHERE id = ? LIMIT 1', [id])
 
 // ── Get correct options by question_id (for auto scoring) ─────────────────
+const getCorrectOptionsByTestId = (test_id) =>
+  pool.query(
+    `SELECT o.id, o.question_id
+     FROM options o
+     JOIN questions q ON q.id = o.question_id
+     WHERE q.test_id = ? AND o.is_correct = 1`,
+    [test_id]
+  )
+
 const getCorrectOptions = (question_id) =>
   pool.query('SELECT id FROM options WHERE question_id = ? AND is_correct = 1', [question_id])
 
@@ -57,6 +66,7 @@ export {
   getOptionsByQuestionId,
   getOptionById,
   getCorrectOptions,
+  getCorrectOptionsByTestId,
   checkQuestionExists,
   createOption,
   bulkCreateOptions,

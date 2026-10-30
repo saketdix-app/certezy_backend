@@ -38,8 +38,9 @@ const upsertLessonProgress = (user_id, lesson_id, { is_completed, watch_time }) 
     `INSERT INTO lesson_progress (user_id, lesson_id, is_completed, watch_time)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-       is_completed = VALUES(is_completed),
-       watch_time   = VALUES(watch_time)`,
+       -- a completed lesson stays completed (a later periodic sync sends 0)
+       is_completed = GREATEST(is_completed, VALUES(is_completed)),
+       watch_time   = GREATEST(watch_time, VALUES(watch_time))`,
     [user_id, lesson_id, is_completed ?? 0, watch_time ?? 0]
   )
 
