@@ -48,7 +48,9 @@ const getAllCourses = async (query = {}) => {
     sortBy = 'created_at',
     sortOrder = 'DESC',
   } = query
-  const filters = { status, category_id, level, is_featured, search, pricing }
+  // category slug: ?category=… (older links use ?category_slug=…)
+  const category = query.category || query.category_slug || undefined
+  const filters = { status, category_id, category, level, is_featured, search, pricing }
 
   const cacheKey = `courses:list:${JSON.stringify({ page, limit, ...filters, sortBy, sortOrder })}`
   const cached = await cache.get(cacheKey)

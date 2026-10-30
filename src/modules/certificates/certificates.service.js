@@ -9,11 +9,20 @@ import env from '../../config/env.js'
 import { getCourseMeta } from '../lessons/lessons.queries.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { renderCertificatePdf, formatCertificateName, ISSUER } from './certificate.pdf.js'
+import { contactHoursFor, pduIdFor } from './contactHours.js'
 
 const verifyUrlFor = (certificate_no) => `${env.frontendUrl}/verify/${certificate_no}`
 
 // ── Generate Certificate PDF + Upload ─────────────────────────────────────
-const generateCertPDF = async ({ certificate_no, studentName, courseTitle, issuedAt, totalLessons }) => {
+const generateCertPDF = async ({
+  certificate_no,
+  studentName,
+  courseId,
+  courseTitle,
+  issuedAt,
+  totalLessons,
+}) => {
+  const contactHours = contactHoursFor(courseId)
   const buffer = await renderCertificatePdf({
     certificateNo: certificate_no,
     studentName,
@@ -21,6 +30,8 @@ const generateCertPDF = async ({ certificate_no, studentName, courseTitle, issue
     issuedAt,
     verifyUrl: verifyUrlFor(certificate_no),
     durationLabel: totalLessons ? `${totalLessons} lessons` : undefined,
+    contactHours,
+    pduId: contactHours ? pduIdFor(certificate_no) : undefined,
   })
   const key = `certificates/${certificate_no}.pdf`
   const url = await uploadFile({ buffer, key, mimeType: 'application/pdf', isPublic: true })
@@ -34,6 +45,7 @@ const attachPdf = async (cert, { student, course }) => {
   const { url } = await generateCertPDF({
     certificate_no: cert.certificate_no,
     studentName: student.name,
+    courseId: course.id,
     courseTitle: course.title,
     issuedAt: cert.issued_at || new Date(),
     totalLessons: metaRows[0]?.total_lessons,
@@ -164,6 +176,10 @@ const verifyCertificate = async (certificate_no) => {
     valid_until: c.valid_until,
     pdf_url: c.pdf_url,
     issuer: ISSUER,
+    ...(contactHoursFor(c.course_id) && {
+      contact_hours: contactHoursFor(c.course_id).hours,
+      pdu_id: pduIdFor(c.certificate_no),
+    }),
   }
 }
 

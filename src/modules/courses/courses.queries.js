@@ -7,7 +7,7 @@ const ALLOWED_SORT = ['price', 'created_at', 'rating_avg', 'rating_count', 'enro
 const ALLOWED_ORDER = ['ASC', 'DESC']
 
 // ── Shared WHERE builder for list + count ─────────────────────────────────
-const buildFilters = ({ status, category_id, level, is_featured, search, pricing }) => {
+const buildFilters = ({ status, category_id, category, level, is_featured, search, pricing }) => {
   const conditions = []
   const values = []
 
@@ -17,9 +17,19 @@ const buildFilters = ({ status, category_id, level, is_featured, search, pricing
   } else {
     conditions.push("c.status = 'published'")
   }
+  // A category includes its sub-categories (courses live in the sub-categories)
   if (category_id) {
-    conditions.push('c.category_id = ?')
-    values.push(category_id)
+    conditions.push('c.category_id IN (SELECT id FROM categories WHERE id = ? OR parent_id = ?)')
+    values.push(category_id, category_id)
+  }
+  if (category) {
+    conditions.push(
+      `c.category_id IN (
+         SELECT ch.id FROM categories ch
+         LEFT JOIN categories p ON p.id = ch.parent_id
+         WHERE ch.slug = ? OR p.slug = ?)`
+    )
+    values.push(category, category)
   }
   if (level) {
     conditions.push('c.level = ?')

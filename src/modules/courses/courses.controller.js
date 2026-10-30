@@ -4,7 +4,7 @@ import * as service from './courses.service.js'
 import { success } from '../../utils/response.js'
 import { asyncHandler } from '../../utils/http.js'
 
-// GET /courses?page&limit&status&category_id&level&is_featured&pricing&search&sortBy&sortOrder
+// GET /courses?page&limit&status&category_id|category(slug)&level&is_featured&pricing&search&sortBy&sortOrder
 const getAllCourses = asyncHandler(async (req, res) => {
   const result = await service.getAllCourses(req.query)
   return success(res, { message: 'Courses fetched', data: result.courses, pagination: result.pagination })

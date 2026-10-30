@@ -87,7 +87,8 @@ const seal = (doc, cx, cy) => {
 
 /**
  * @param {{ certificateNo: string, studentName: string, courseTitle: string,
- *           issuedAt: Date|string, verifyUrl?: string, durationLabel?: string }} data
+ *           issuedAt: Date|string, verifyUrl?: string, durationLabel?: string,
+ *           contactHours?: { hours: number, subject: string }, pduId?: string }} data
  * @returns {Promise<Buffer>}
  */
 export const renderCertificatePdf = ({
@@ -97,6 +98,8 @@ export const renderCertificatePdf = ({
   issuedAt,
   verifyUrl,
   durationLabel,
+  contactHours,
+  pduId,
 }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -188,9 +191,21 @@ export const renderCertificatePdf = ({
     const titleH = Math.min(50, doc.heightOfString(courseTitle, { width: W - 220 }))
     doc.text(courseTitle, 110, 336, { width: W - 220, align: 'center', height: 50, ellipsis: true })
 
+    let y = 336 + titleH + 10
+
+    // Contact-hour courses (PMP): highlighted training-hours line
+    if (contactHours) {
+      const label = `${contactHours.hours} Contact Hours of ${contactHours.subject} Training Completed`
+      doc.font('Helvetica-Bold').fontSize(11.5)
+      const w = doc.widthOfString(label, { characterSpacing: 0.4 }) + 36
+      doc.roundedRect(cx - w / 2, y - 2, w, 22, 11).fill('#F6EED8')
+      doc.fillColor('#7A5A12').text(label, 0, y + 3.5, { width: W, align: 'center', characterSpacing: 0.4 })
+      y += 30
+    }
+
     const sub = [durationLabel, `offered by ${ISSUER}`].filter(Boolean).join('  ·  ')
     doc.fillColor(MUTED).font('Helvetica').fontSize(10.5)
-    doc.text(sub, 0, 336 + titleH + 10, { width: W, align: 'center' })
+    doc.text(sub, 0, y, { width: W, align: 'center' })
 
     // ── Footer: date · seal · signatory ──────────────────────────────
     const footY = 452
@@ -226,9 +241,13 @@ export const renderCertificatePdf = ({
 
     // ── Verification strip ───────────────────────────────────────────
     doc.fillColor(MUTED).font('Helvetica').fontSize(8.5)
-    const strip = verifyUrl
-      ? `Certificate No. ${certificateNo}   ·   Verify at ${verifyUrl.replace(/^https?:\/\//, '')}`
-      : `Certificate No. ${certificateNo}`
+    const strip = [
+      `Certificate No. ${certificateNo}`,
+      pduId && `PDU ID: ${pduId}`,
+      verifyUrl && `Verify at ${verifyUrl.replace(/^https?:\/\//, '')}`,
+    ]
+      .filter(Boolean)
+      .join('   ·   ')
     doc.text(strip, 0, H - 64, { width: W, align: 'center', characterSpacing: 0.3 })
 
     doc.end()

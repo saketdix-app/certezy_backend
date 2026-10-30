@@ -29,7 +29,7 @@ const updatePdfUrl = (id, pdf_url) =>
 const getCertificateForVerify = (certificate_no) =>
   pool.query(
     `SELECT
-       cert.certificate_no, cert.issued_at, cert.valid_until, cert.pdf_url,
+       cert.certificate_no, cert.course_id, cert.issued_at, cert.valid_until, cert.pdf_url,
        u.name AS student_name,
        c.title AS course_title, c.slug AS course_slug
      FROM certificates cert
