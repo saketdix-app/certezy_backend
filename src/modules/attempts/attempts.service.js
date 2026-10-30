@@ -6,6 +6,7 @@ import * as optionQueries from '../options/options.queries.js'
 import * as questionService from '../questions/questions.service.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { autoIssueOnCompletion } from '../certificates/certificates.service.js'
+import { updateLessonProgress } from '../progress/progress.service.js'
 
 // ── Start attempt ──────────────────────────────────────────────────────────
 const startAttempt = async (user_id, test_id) => {
@@ -83,19 +84,31 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
   const test = testRows[0]
 
   // ── Auto Scoring ───────────────────────────────────────────────────────
-  const total_marks = answers.length
+  // Every question in the test counts; skipped questions score 0. Option ids
+  // are compared as numbers (the client may send strings), order-independent.
+  const toIdList = (value) =>
+    [...new Set((Array.isArray(value) ? value : value == null ? [] : [value]).map(Number))]
+      .filter(Number.isInteger)
+      .sort((a, b) => a - b)
+
+  const questions = await questionService.getQuestionsByTestId(attempt.test_id)
+  const [correctRows] = await optionQueries.getCorrectOptionsByTestId(attempt.test_id)
+  const correctByQuestion = new Map()
+  for (const row of correctRows) {
+    const list = correctByQuestion.get(row.question_id) ?? []
+    list.push(row.id)
+    correctByQuestion.set(row.question_id, list)
+  }
+  const selectedByQuestion = new Map((answers ?? []).map((a) => [Number(a.question_id), a.selected_opts]))
+
+  const total_marks = questions.length
   let obtained_marks = 0
   const processedAnswers = []
+  const review = []
 
-  for (const ans of answers) {
-    const { question_id, selected_opts } = ans
-
-    // Correct options DB se fetch karo
-    const [correctRows] = await optionQueries.getCorrectOptions(question_id)
-    const correctIds = correctRows.map((r) => r.id).sort()
-
-    // selected_opts sort karke compare karo
-    const selectedIds = (selected_opts ?? []).slice().sort()
+  for (const q of questions) {
+    const correctIds = toIdList(correctByQuestion.get(q.id))
+    const selectedIds = toIdList(selectedByQuestion.get(q.id))
 
     const is_correct =
       correctIds.length > 0 &&
@@ -108,9 +121,15 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
 
     processedAnswers.push({
       attempt_id,
-      question_id,
-      selected_opts: JSON.stringify(selected_opts ?? []),
+      question_id: q.id,
+      selected_opts: JSON.stringify(selectedIds),
       is_correct,
+    })
+    review.push({
+      question_id: q.id,
+      selected_opts: selectedIds,
+      correct_opts: correctIds,
+      is_correct: !!is_correct,
     })
   }
 
@@ -123,7 +142,7 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
   const time_taken = Math.floor((Date.now() - new Date(attempt.started_at).getTime()) / 1000)
 
   // Attempt answers save karo
-  await queries.insertAttemptAnswers(processedAnswers)
+  if (processedAnswers.length) await queries.insertAttemptAnswers(processedAnswers)
 
   // Attempt complete karo
   await queries.completeAttempt(attempt_id, {
@@ -134,9 +153,20 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     is_passed,
   })
 
-  // Passing a final test may finish the course → certificate
-  const certificate =
-    is_passed && test.type === 'final' ? await autoIssueOnCompletion(user_id, test.course_id) : null
+  // A passed test that belongs to a quiz lesson completes that lesson (which
+  // may finish the course); passing a final test may finish the course too.
+  let certificate = null
+  if (is_passed && test.lesson_id) {
+    try {
+      const progress = await updateLessonProgress(user_id, test.lesson_id, { is_completed: 1, watch_time: 0 })
+      certificate = progress.certificate
+    } catch (err) {
+      console.error(`Could not complete lesson ${test.lesson_id} after test ${test.id}:`, err.message)
+    }
+  }
+  if (!certificate && is_passed && test.type === 'final') {
+    certificate = await autoIssueOnCompletion(user_id, test.course_id)
+  }
 
   return {
     attempt_id,
@@ -146,6 +176,7 @@ const submitAttempt = async (user_id, { attempt_id, answers }) => {
     time_taken,
     is_passed: !!is_passed,
     pass_percentage: test.pass_percentage,
+    review,
     certificate,
   }
 }

@@ -52,7 +52,23 @@ const updateQuestion = (id, { question, type, explanation, difficulty, topic_tag
   )
 
 // ── Delete question ────────────────────────────────────────────────────────
-const deleteQuestionById = (id) => pool.query('DELETE FROM questions WHERE id = ?', [id])
+// Removes the question with its options and any saved student answers in one
+// transaction, so it also works on databases whose foreign keys don't cascade.
+const deleteQuestionById = async (id) => {
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    await conn.query('DELETE FROM attempt_answers WHERE question_id = ?', [id])
+    await conn.query('DELETE FROM options WHERE question_id = ?', [id])
+    await conn.query('DELETE FROM questions WHERE id = ?', [id])
+    await conn.commit()
+  } catch (err) {
+    await conn.rollback()
+    throw err
+  } finally {
+    conn.release()
+  }
+}
 
 export {
   getQuestionsByTestId,
