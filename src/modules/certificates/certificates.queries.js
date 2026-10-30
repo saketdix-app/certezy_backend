@@ -25,6 +25,10 @@ const getCertificateByUserAndCourse = (user_id, course_id) =>
 const updatePdfUrl = (id, pdf_url) =>
   pool.query(`UPDATE certificates SET pdf_url = ? WHERE id = ?`, [pdf_url, id])
 
+// ── Reissue: move the issue date to now ───────────────────────────────────
+const touchIssuedAt = (id) =>
+  pool.query(`UPDATE certificates SET issued_at = CURRENT_TIMESTAMP WHERE id = ?`, [id])
+
 // ── Public verification by certificate number ─────────────────────────────
 const getCertificateForVerify = (certificate_no) =>
   pool.query(
@@ -91,6 +95,7 @@ export {
   getCertificateById,
   getCertificateByUserAndCourse,
   updatePdfUrl,
+  touchIssuedAt,
   getCertificatesByUserId,
   getCertificateForVerify,
   getFinalTestResults,

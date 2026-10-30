@@ -54,6 +54,43 @@ const attachPdf = async (cert, { student, course }) => {
   return { ...cert, pdf_url: url }
 }
 
+// ── Reissue: same certificate number, today's date, fresh PDF ─────────────
+const reissueCertificate = async (cert) => {
+  await queries.touchIssuedAt(cert.id)
+  const [rows] = await queries.getCertificateById(cert.id)
+  const [courseRows] = await courseQueries.getCourseById(cert.course_id)
+  const student = await findById(cert.user_id)
+  const updated = await attachPdf(rows[0], { student, course: courseRows[0] })
+  // Same S3 key is overwritten — a version query makes browsers fetch the new file
+  const pdf_url = `${updated.pdf_url.split('?')[0]}?v=${Date.now()}`
+  await queries.updatePdfUrl(cert.id, pdf_url)
+  return { ...updated, pdf_url }
+}
+
+// ── Called whenever a student passes a test of the course ─────────────────
+// Already certified → reissue with the new date; otherwise issue it if the
+// course is now complete. Never throws (a certificate problem must not fail
+// the exam submission). `issuedBefore` lets the caller decide before anything
+// else in the request could have issued it.
+const issueOrReissueOnPass = async (user_id, course_id, { issuedBefore } = {}) => {
+  try {
+    const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
+    if (existing.length && issuedBefore !== false) {
+      return { certificate: await reissueCertificate(existing[0]), reissued: true }
+    }
+    if (existing.length) return { certificate: existing[0], reissued: false }
+    return { certificate: await autoIssueOnCompletion(user_id, course_id), reissued: false }
+  } catch (err) {
+    console.error(`Certificate on pass failed (user ${user_id}, course ${course_id}):`, err.message)
+    return { certificate: null, reissued: false }
+  }
+}
+
+const hasCertificate = async (user_id, course_id) => {
+  const [rows] = await queries.getCertificateByUserAndCourse(user_id, course_id)
+  return rows.length > 0
+}
+
 // ── Core: issue certificate ────────────────────────────────────────────────
 const issueCertificate = async (user_id, course_id) => {
   // Already issued check
@@ -222,6 +259,8 @@ const getAllCertificates = async ({ page = 1, limit = 20 } = {}) => {
 export {
   issueCertificate,
   autoIssueOnCompletion,
+  issueOrReissueOnPass,
+  hasCertificate,
   claimCertificate,
   verifyCertificate,
   getMyCertificates,
