@@ -53,7 +53,35 @@ const updateTest = (id, { title, type, duration, pass_percentage, status }) =>
   )
 
 // ── Delete test ────────────────────────────────────────────────────────────
-const deleteTestById = (id) => pool.query('DELETE FROM tests WHERE id = ?', [id])
+// Removes the test with everything that belongs to it — students' attempts and
+// their answers, questions and options — in one transaction, so it also works
+// on databases whose foreign keys don't cascade.
+const deleteTestById = async (id) => {
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    await conn.query(
+      'DELETE aa FROM attempt_answers aa JOIN test_attempts ta ON ta.id = aa.attempt_id WHERE ta.test_id = ?',
+      [id]
+    )
+    await conn.query(
+      'DELETE aa FROM attempt_answers aa JOIN questions q ON q.id = aa.question_id WHERE q.test_id = ?',
+      [id]
+    )
+    await conn.query('DELETE FROM test_attempts WHERE test_id = ?', [id])
+    await conn.query('DELETE o FROM options o JOIN questions q ON q.id = o.question_id WHERE q.test_id = ?', [
+      id,
+    ])
+    await conn.query('DELETE FROM questions WHERE test_id = ?', [id])
+    await conn.query('DELETE FROM tests WHERE id = ?', [id])
+    await conn.commit()
+  } catch (err) {
+    await conn.rollback()
+    throw err
+  } finally {
+    conn.release()
+  }
+}
 
 // ── Update total_questions count ───────────────────────────────────────────
 const updateTotalQuestions = (test_id) =>
