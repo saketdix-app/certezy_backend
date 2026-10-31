@@ -3,49 +3,66 @@
 import { pool } from '../../config/db.js'
 import * as queries from './discounts.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
-import { findById } from '../auth/auth.queries.js'
+import { findById, findByEmail } from '../auth/auth.queries.js'
+import env from '../../config/env.js'
 import { generateUUID } from '../../utils/generate.js'
 import { sendDiscountJob } from '../../jobs/emailQueue.js'
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
+const offerUrlFor = (token) => `${env.frontendUrl}/offer/${token}`
+
+// "saket@gmail.com" → "s****@gmail.com" (public offer page hint)
+const maskEmail = (email = '') => {
+  const [local, domain] = email.split('@')
+  if (!domain) return ''
+  return `${local[0]}${'*'.repeat(Math.max(1, local.length - 1))}@${domain}`
+}
+
 // ── Create discount link (admin) ───────────────────────────────────────────
-const createDiscountLink = async (created_by, { user_id, course_id, discount_price, expiry_hours }) => {
+// For a registered student (user_id) or for any email address (email). An email
+// that already has an account is linked to it; otherwise the link waits for
+// whoever signs up with that email.
+const createDiscountLink = async (
+  created_by,
+  { user_id, email, course_id, discount_price, expiry_hours }
+) => {
   // Course exists check
   const [courseRows] = await courseQueries.getCourseById(course_id)
-  if (!courseRows.length) {
-    const err = new Error('Course not found')
-    err.statusCode = 404
-    throw err
-  }
+  if (!courseRows.length) throw fail(404, 'Course not found')
   const course = courseRows[0]
 
-  // Student exists check
-  const student = await findById(user_id)
-  if (!student) {
-    const err = new Error('Student not found')
-    err.statusCode = 404
-    throw err
+  let student = null
+  let targetEmail = null
+  if (user_id) {
+    student = await findById(user_id)
+    if (!student) throw fail(404, 'Student not found')
+  } else {
+    targetEmail = String(email ?? '')
+      .trim()
+      .toLowerCase()
+    if (!EMAIL_RE.test(targetEmail)) throw fail(400, 'Enter a valid email address')
+    student = await findByEmail(targetEmail)
   }
 
   // Student already enrolled check
-  const [enrollCheck] = await pool_query_check(user_id, course_id)
-  if (enrollCheck.length) {
-    const err = new Error('Student is already enrolled in this course')
-    err.statusCode = 409
-    throw err
+  if (student) {
+    const [enrollCheck] = await pool_query_check(student.id, course_id)
+    if (enrollCheck.length) throw fail(409, 'This student is already enrolled in this course')
   }
 
   // Discount price validation
-  if (discount_price >= course.price) {
-    const err = new Error('Discount price must be less than original price')
-    err.statusCode = 400
-    throw err
+  const price = Number(course.price)
+  const discountPrice = Number(discount_price)
+  if (!(discountPrice >= 0) || discountPrice >= price) {
+    throw fail(400, 'Discount price must be less than the course price')
   }
 
   // Discount percentage calculate karo
-  const discount_pct = parseFloat((((course.price - discount_price) / course.price) * 100).toFixed(2))
+  const discount_pct = parseFloat((((price - discountPrice) / price) * 100).toFixed(2))
 
   // Expiry calculate karo
-  const expires_at = new Date(Date.now() + (expiry_hours ?? 24) * 60 * 60 * 1000)
+  const expires_at = new Date(Date.now() + (Number(expiry_hours) || 24) * 60 * 60 * 1000)
 
   // Token generate karo
   const token = generateUUID()
@@ -53,68 +70,89 @@ const createDiscountLink = async (created_by, { user_id, course_id, discount_pri
   // DB mein save karo
   await queries.createDiscountLink({
     token,
-    user_id,
+    user_id: student?.id ?? null,
+    email: student ? student.email.toLowerCase() : targetEmail,
     course_id,
-    original_price: course.price,
-    discount_price,
+    original_price: price,
+    discount_price: discountPrice,
     discount_pct,
     created_by,
     expires_at,
   })
 
-  // Email bhejo student ko (background job)
+  const to = student?.email ?? targetEmail
+  const offer_url = offerUrlFor(token)
+
+  // Email bhejo (background job)
   await sendDiscountJob({
-    to: student.email,
-    name: student.name,
+    to,
+    name: student?.name ?? null,
     courseTitle: course.title,
-    originalPrice: course.price,
-    discountPrice: discount_price,
+    originalPrice: price,
+    discountPrice,
+    discountPct: discount_pct,
     token,
+    offerUrl: offer_url,
     expiresAt: expires_at,
   })
 
   return {
     token,
-    student_email: student.email,
+    offer_url,
+    student_email: to,
+    is_registered: Boolean(student),
     course_title: course.title,
-    original_price: course.price,
-    discount_price,
+    original_price: price,
+    discount_price: discountPrice,
     discount_pct,
     expires_at,
+  }
+}
+
+// ── Public — offer details for the landing page (no login) ────────────────
+const getOffer = async (token) => {
+  const [rows] = await queries.getOfferByToken(token)
+  if (!rows.length) throw fail(404, 'This offer link is not valid')
+  const o = rows[0]
+  const status = o.is_used ? 'used' : new Date() > new Date(o.expires_at) ? 'expired' : 'active'
+  return {
+    status,
+    course: {
+      id: o.course_id,
+      title: o.course_title,
+      slug: o.course_slug,
+      thumbnail: o.course_thumbnail,
+      short_desc: o.course_short_desc,
+    },
+    original_price: o.original_price,
+    discount_price: o.discount_price,
+    discount_pct: o.discount_pct,
+    expires_at: o.expires_at,
+    email_hint: maskEmail(o.email ?? ''),
   }
 }
 
 // ── Verify discount token (student checkout se pehle) ─────────────────────
 const verifyDiscountToken = async (token, user_id) => {
   const [rows] = await queries.getDiscountByToken(token)
-  if (!rows.length) {
-    const err = new Error('Invalid discount link')
-    err.statusCode = 404
-    throw err
-  }
+  if (!rows.length) throw fail(404, 'Invalid discount link')
 
   const discount = rows[0]
 
-  // Sirf us student ke liye hai jo token mila tha
-  if (discount.user_id !== user_id) {
-    const err = new Error('This discount link is not for you')
-    err.statusCode = 403
-    throw err
+  // Only for the student it was created for — by account, or by email for
+  // links sent to an address that had no account yet
+  let allowed = discount.user_id === user_id
+  if (!allowed && discount.user_id == null && discount.email) {
+    const user = await findById(user_id)
+    allowed = Boolean(user) && user.email.toLowerCase() === discount.email.toLowerCase()
   }
+  if (!allowed) throw fail(403, 'This discount link was sent to a different email address')
 
   // Already used check
-  if (discount.is_used) {
-    const err = new Error('Discount link already used')
-    err.statusCode = 410
-    throw err
-  }
+  if (discount.is_used) throw fail(410, 'Discount link already used')
 
   // Expiry check
-  if (new Date() > new Date(discount.expires_at)) {
-    const err = new Error('Discount link has expired')
-    err.statusCode = 410
-    throw err
-  }
+  if (new Date() > new Date(discount.expires_at)) throw fail(410, 'Discount link has expired')
 
   return {
     discount_link_id: discount.id,
@@ -127,8 +165,8 @@ const verifyDiscountToken = async (token, user_id) => {
 }
 
 // ── Mark discount as used (payment verify ke baad call hoga) ──────────────
-const markDiscountUsed = async (discount_link_id) => {
-  await queries.markDiscountUsed(discount_link_id)
+const markDiscountUsed = async (discount_link_id, user_id = null) => {
+  await queries.markDiscountUsed(discount_link_id, user_id)
 }
 
 // ── Admin — get all discount links ─────────────────────────────────────────
@@ -153,4 +191,4 @@ const getAllDiscounts = async ({ page = 1, limit = 20 } = {}) => {
 const pool_query_check = (user_id, course_id) =>
   pool.query('SELECT id FROM enrollments WHERE user_id = ? AND course_id = ? LIMIT 1', [user_id, course_id])
 
-export { createDiscountLink, verifyDiscountToken, markDiscountUsed, getAllDiscounts }
+export { createDiscountLink, getOffer, verifyDiscountToken, markDiscountUsed, getAllDiscounts }

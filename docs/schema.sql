@@ -211,7 +211,8 @@ CREATE TABLE IF NOT EXISTS attempt_answers (
 CREATE TABLE IF NOT EXISTS discount_links (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   token           VARCHAR(100) NOT NULL UNIQUE,
-  user_id         INT NOT NULL,
+  user_id         INT NULL,                -- NULL until someone with `email` signs up
+  email           VARCHAR(150) NULL,       -- set for discounts sent to an email address
   course_id       INT NOT NULL,
   original_price  DECIMAL(10,2) NOT NULL,
   discount_price  DECIMAL(10,2) NOT NULL,
