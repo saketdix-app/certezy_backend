@@ -18,6 +18,11 @@ router.post(
 )
 router.get('/', authenticate, role('admin', 'sub_admin'), controller.getAllDiscounts)
 
+// ─── PUBLIC ───────────────────────────────────────────────────
+// Offer landing page (course + prices + status); using it still needs the
+// matching account at checkout
+router.get('/offer/:token', controller.getOffer)
+
 // ─── STUDENT ──────────────────────────────────────────────────
 router.get('/verify/:token', authenticate, role('student'), controller.verifyDiscountToken)
 

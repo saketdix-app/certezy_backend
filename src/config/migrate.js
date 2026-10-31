@@ -175,6 +175,19 @@ const STEPS = [
     run: () => addColumnIfMissing('reviews', 'created_by', 'INT NULL'),
   },
   {
+    name: 'discount_links.user_id nullable (discount sent to an email without an account)',
+    run: async () => {
+      const col = await columnInfo('discount_links', 'user_id')
+      if (!col || col.IS_NULLABLE === 'YES') return false
+      await pool.query(`ALTER TABLE discount_links MODIFY user_id ${col.COLUMN_TYPE} NULL`)
+      return true
+    },
+  },
+  {
+    name: 'discount_links.email (who an email-only discount is for)',
+    run: () => addColumnIfMissing('discount_links', 'email', 'VARCHAR(150) NULL AFTER user_id'),
+  },
+  {
     name: 'reviews.updated_at (students can edit their review)',
     run: () =>
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),

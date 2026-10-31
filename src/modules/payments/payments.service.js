@@ -124,7 +124,7 @@ const handlePaymentSuccess = async ({ payment_id, gateway_txn_id, user, courseTi
 
   // Discount link use hua to mark karo
   if (payment.discount_link_id) {
-    await markDiscountUsed(payment.discount_link_id)
+    await markDiscountUsed(payment.discount_link_id, payment.user_id)
   }
 
   // Invoice email queue mein daalo

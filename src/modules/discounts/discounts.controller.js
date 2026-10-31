@@ -13,6 +13,16 @@ const createDiscountLink = async (req, res, next) => {
   }
 }
 
+// ── GET /discounts/offer/:token — public offer details (landing page) ──────
+const getOffer = async (req, res, next) => {
+  try {
+    const offer = await service.getOffer(req.params.token)
+    return success(res, { message: 'Offer fetched', data: offer })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ── GET /discounts/verify/:token — verify token (student) ─────────────────
 const verifyDiscountToken = async (req, res, next) => {
   try {
@@ -38,4 +48,4 @@ const getAllDiscounts = async (req, res, next) => {
   }
 }
 
-export { createDiscountLink, verifyDiscountToken, getAllDiscounts }
+export { createDiscountLink, verifyDiscountToken, getAllDiscounts, getOffer }
