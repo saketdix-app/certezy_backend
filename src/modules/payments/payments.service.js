@@ -7,7 +7,10 @@ import {
   LogLevel,
   OrdersController,
   CheckoutPaymentIntent,
+  PaypalExperienceUserAction,
+  PaypalWalletContextShippingPreference,
 } from '@paypal/paypal-server-sdk'
+import axios from 'axios'
 import crypto from 'crypto'
 import env from '../../config/env.js'
 import * as queries from './payments.queries.js'
@@ -59,6 +62,79 @@ const getPaypalOrders = () => {
   return ordersControllerInstance
 }
 
+const safeJson = (s) => {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}
+
+// Readable reason from a PayPal SDK error (name — issue — description)
+const paypalErrorDetail = (err) => {
+  const body = err?.result ?? (typeof err?.body === 'string' ? safeJson(err.body) : err?.body)
+  const issue = body?.details?.[0]
+  return (
+    [body?.name, issue?.issue, issue?.description || body?.message || err?.message]
+      .filter(Boolean)
+      .join(' — ') || 'unknown error'
+  )
+}
+
+// ─── Admin: check both gateways' credentials (no money moves) ────────────
+const checkGateways = async () => {
+  const razorpay = {
+    configured: Boolean(env.razorpay.keyId && env.razorpay.keySecret),
+    mode: env.razorpay.keyId?.startsWith('rzp_live_') ? 'live' : env.razorpay.keyId ? 'test' : null,
+    webhook_secret_set: Boolean(env.razorpay.webhookSecret),
+    ok: false,
+    error: null,
+  }
+  if (razorpay.configured) {
+    try {
+      await getRazorpay().orders.all({ count: 1 })
+      razorpay.ok = true
+    } catch (err) {
+      razorpay.error = err?.error?.description || err?.message || 'Authentication failed'
+    }
+  } else {
+    razorpay.error = 'RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set'
+  }
+
+  const paypal = {
+    configured: Boolean(env.paypal.clientId && env.paypal.clientSecret),
+    mode: env.paypal.mode === 'live' ? 'live' : 'sandbox',
+    ok: false,
+    error: null,
+  }
+  if (paypal.configured) {
+    const base = paypal.mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
+    try {
+      await axios.post(`${base}/v1/oauth2/token`, 'grant_type=client_credentials', {
+        auth: { username: env.paypal.clientId, password: env.paypal.clientSecret },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 10000,
+      })
+      paypal.ok = true
+    } catch (err) {
+      const d = err.response?.data
+      paypal.error =
+        d?.error === 'invalid_client'
+          ? `Client ID / secret rejected by PayPal ${paypal.mode} — check the keys and PAYPAL_MODE (live keys need PAYPAL_MODE=live)`
+          : d?.error_description || err.message
+    }
+  } else {
+    paypal.error = 'PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET are not set'
+  }
+
+  return {
+    razorpay,
+    paypal,
+    paypal_return_url: `${env.frontendUrl}/payment/paypal/return`,
+    razorpay_webhook_path: '/api/v1/payments/razorpay/webhook',
+  }
+}
+
 // ─── Shared: what does this user pay for this course? ────────────────────
 // The amount is ALWAYS computed here from the database. Anything the client
 // sends about price is ignored — only a discount link id is accepted, and it
@@ -101,16 +177,23 @@ const handlePaymentSuccess = async ({ payment_id, gateway_txn_id, user, courseTi
   const invoiceNumber = generateInvoiceNumber()
   const payment = await getPaymentById(payment_id)
 
-  const { url: invoice_url } = await generateInvoice({
-    invoiceNumber,
-    studentName: user.name,
-    studentEmail: user.email,
-    courseTitle,
-    amount: payment.amount,
-    currency: payment.currency,
-    transactionId: gateway_txn_id,
-    date: new Date(),
-  })
+  // The money is already taken at this point: an invoice (S3) or email (queue)
+  // problem must never stop the payment being recorded and the course unlocked.
+  let invoice_url = null
+  try {
+    ;({ url: invoice_url } = await generateInvoice({
+      invoiceNumber,
+      studentName: user.name,
+      studentEmail: user.email,
+      courseTitle,
+      amount: payment.amount,
+      currency: payment.currency,
+      transactionId: gateway_txn_id,
+      date: new Date(),
+    }))
+  } catch (err) {
+    console.error(`Invoice for payment ${payment_id} failed:`, err.message)
+  }
 
   // Payment success mark karo
   await queries.markPaymentSuccess(payment_id, { gateway_txn_id, invoice_url })
@@ -128,14 +211,18 @@ const handlePaymentSuccess = async ({ payment_id, gateway_txn_id, user, courseTi
   }
 
   // Invoice email queue mein daalo
-  await sendInvoiceJob({
-    to: user.email,
-    name: user.name,
-    courseTitle,
-    amount: payment.amount,
-    invoiceUrl: invoice_url,
-    transactionId: gateway_txn_id,
-  })
+  try {
+    await sendInvoiceJob({
+      to: user.email,
+      name: user.name,
+      courseTitle,
+      amount: payment.amount,
+      invoiceUrl: invoice_url,
+      transactionId: gateway_txn_id,
+    })
+  } catch (err) {
+    console.error(`Invoice email for payment ${payment_id} failed:`, err.message)
+  }
 
   return { invoice_url }
 }
@@ -169,13 +256,21 @@ const razorpayCreateOrder = async (user_id, body) => {
     discount_link_id: body.discount_link_id ?? null,
   })
 
-  const order = await getRazorpay().orders.create({
-    amount: Math.round(amount * 100),
-    currency: 'INR',
-    receipt: `pay_${result.insertId}`,
-    // Lets the webhook find our payment row
-    notes: { payment_id: String(result.insertId), course_id: String(course.id), user_id: String(user_id) },
-  })
+  let order
+  try {
+    order = await getRazorpay().orders.create({
+      amount: Math.round(amount * 100),
+      currency: 'INR',
+      receipt: `pay_${result.insertId}`,
+      // Lets the webhook find our payment row
+      notes: { payment_id: String(result.insertId), course_id: String(course.id), user_id: String(user_id) },
+    })
+  } catch (err) {
+    await queries.markPaymentFailed(result.insertId)
+    const detail = err?.error?.description || err?.message || 'unknown error'
+    console.error('Razorpay create order failed:', detail)
+    throw new AppError(`Razorpay could not start the payment: ${detail}`, 502)
+  }
 
   return {
     payment_id: result.insertId,
@@ -227,18 +322,40 @@ const razorpayVerify = async (
 const paypalCreateOrder = async (user_id, body) => {
   const { course, amount, original_amount } = await prepareCheckout(user_id, body)
 
-  const { result: order } = await getPaypalOrders().createOrder({
-    body: {
-      intent: CheckoutPaymentIntent.Capture,
-      purchaseUnits: [
-        {
-          amount: { currencyCode: 'USD', value: Number(amount).toFixed(2) },
-          description: course.title.slice(0, 127),
+  let order
+  try {
+    ;({ result: order } = await getPaypalOrders().createOrder({
+      body: {
+        intent: CheckoutPaymentIntent.Capture,
+        purchaseUnits: [
+          {
+            amount: { currencyCode: 'USD', value: Number(amount).toFixed(2) },
+            description: course.title.slice(0, 127),
+          },
+        ],
+        // Where PayPal sends the payer after approving / cancelling. Without a
+        // return URL PayPal shows "Things don't appear to be working" after approval.
+        paymentSource: {
+          paypal: {
+            experienceContext: {
+              brandName: 'Certezy',
+              returnUrl: `${env.frontendUrl}/payment/paypal/return`,
+              cancelUrl: `${env.frontendUrl}/payment/paypal/cancel`,
+              userAction: PaypalExperienceUserAction.PayNow,
+              shippingPreference: PaypalWalletContextShippingPreference.NoShipping,
+            },
+          },
         },
-      ],
-    },
-    prefer: 'return=minimal',
-  })
+      },
+      prefer: 'return=minimal',
+    }))
+  } catch (err) {
+    console.error('PayPal create order failed:', paypalErrorDetail(err))
+    throw new AppError(`PayPal could not start the payment: ${paypalErrorDetail(err)}`, 502)
+  }
+
+  // Approval link from PayPal itself, so it always matches sandbox / live
+  const approve_url = order.links?.find((l) => l.rel === 'payer-action' || l.rel === 'approve')?.href ?? null
 
   const [result] = await queries.createPayment({
     user_id,
@@ -253,6 +370,7 @@ const paypalCreateOrder = async (user_id, body) => {
   return {
     payment_id: result.insertId,
     paypal_order_id: order.id,
+    approve_url,
     amount,
     currency: 'USD',
   }
@@ -272,10 +390,14 @@ const paypalCapture = async (user, { payment_id, paypal_order_id }) => {
     })
     captureData = result
   } catch (err) {
+    const detail = paypalErrorDetail(err)
+    // Not approved (window closed / cancelled): leave it pending and say so plainly
+    if (/ORDER_NOT_APPROVED|PAYER_ACTION_REQUIRED/i.test(detail)) {
+      throw new AppError('PayPal payment was not completed — the order was not approved', 400)
+    }
     await queries.markPaymentFailed(payment_id)
-    const error = new Error('PayPal payment capture failed')
-    error.statusCode = 400
-    throw error
+    console.error('PayPal capture failed:', detail)
+    throw new AppError(`PayPal payment capture failed: ${detail}`, 400)
   }
 
   if (captureData.status !== 'COMPLETED') {
@@ -365,6 +487,7 @@ const getRevenueStats = async () => {
 }
 
 export {
+  checkGateways,
   razorpayCreateOrder,
   razorpayVerify,
   razorpayWebhook,
