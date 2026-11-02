@@ -10,7 +10,10 @@ import { validate, schemas } from '../../middleware/validate.js'
 const router = Router()
 
 // ─── ADMIN / SUB-ADMIN ────────────────────────────────────────
-router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllEnrollments)
+const isAdmin = [authenticate, role('admin', 'sub_admin')]
+router.get('/admin/all', ...isAdmin, controller.getAllEnrollments)
+router.get('/admin/stats', ...isAdmin, controller.getEnrollmentStats)
+router.get('/admin/export', ...isAdmin, controller.exportEnrollments)
 
 // Free course assignment — admins, and sub-admins with "manage students"
 const canAssign = [authenticate, role('admin', 'sub_admin'), permission('can_manage_students')]

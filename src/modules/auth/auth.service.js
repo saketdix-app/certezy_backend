@@ -40,7 +40,7 @@ const login = async ({ email, password }) => {
   }
 
   if (user.oauth_provider !== 'local' || !user.password) {
-    const err = new Error(`Please login with ${user.oauth_provider}`)
+    const err = new Error(`Please sign in with ${user.oauth_provider}`)
     err.statusCode = 400
     throw err
   }
