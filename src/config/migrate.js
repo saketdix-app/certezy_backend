@@ -201,6 +201,18 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    name: 'users.deleted_at / deleted_by / was_active / purged_at (delete with 30-day recovery)',
+    run: async () => {
+      const added = await Promise.all([
+        addColumnIfMissing('users', 'deleted_at', 'DATETIME NULL'),
+        addColumnIfMissing('users', 'deleted_by', 'INT NULL'),
+        addColumnIfMissing('users', 'was_active', 'TINYINT(1) NULL'),
+        addColumnIfMissing('users', 'purged_at', 'DATETIME NULL'),
+      ])
+      return added.some(Boolean)
+    },
+  },
+  {
     name: 'discount_links.discount_price_inr (rupee price set by the admin)',
     run: () =>
       addColumnIfMissing('discount_links', 'discount_price_inr', 'DECIMAL(10,2) NULL AFTER discount_price'),

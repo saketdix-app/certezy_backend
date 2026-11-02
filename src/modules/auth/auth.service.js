@@ -5,10 +5,16 @@ import { isOwnUploadUrl } from '../../utils/upload.js'
 import * as queries from './auth.queries.js'
 import tokenUtil from '../../utils/token.js'
 import { sendWelcomeJob } from '../../jobs/emailQueue.js'
+import { purgeDateFor, isDeleted } from './userDeletion.js'
 const BCRYPT_ROUNDS = 12
 
 const register = async ({ name, email, password }) => {
   const existing = await queries.findByEmail(email)
+  if (existing?.deleted_at) {
+    const err = new Error('This email belongs to a deleted account. Contact support to restore it.')
+    err.statusCode = 409
+    throw err
+  }
   if (existing) {
     const err = new Error('Email already registered')
     err.statusCode = 409
@@ -33,6 +39,11 @@ const login = async ({ email, password }) => {
     throw err
   }
 
+  if (user.deleted_at) {
+    const err = new Error('This account has been deleted. Contact support to restore it.')
+    err.statusCode = 403
+    throw err
+  }
   if (!user.is_active) {
     const err = new Error('Account is deactivated. Contact admin.')
     err.statusCode = 403
@@ -126,6 +137,11 @@ const changePassword = async ({ userId, currentPassword, newPassword }) => {
 }
 
 const oauthLogin = async (user) => {
+  if (await isDeleted(user.id)) {
+    const err = new Error('This account has been deleted. Contact support to restore it.')
+    err.statusCode = 403
+    throw err
+  }
   const tokens = await generateTokens(user)
   return {
     user: sanitizeUser(user),
@@ -135,14 +151,14 @@ const oauthLogin = async (user) => {
 }
 
 // ── Get all users (admin) ──────────────────────────────────────────────────
-const getAllUsers = async ({ page = 1, limit = 20, role, search } = {}) => {
+const getAllUsers = async ({ page = 1, limit = 20, role, search, deleted = false, status } = {}) => {
   const offset = (page - 1) * limit
 
-  const [rows] = await queries.getAllUsers({ limit, offset, role, search })
-  const [count] = await queries.countUsers({ role, search })
+  const [rows] = await queries.getAllUsers({ limit, offset, role, search, deleted, status })
+  const [count] = await queries.countUsers({ role, search, deleted, status })
 
   return {
-    users: rows,
+    users: deleted ? rows.map((u) => ({ ...u, restore_until: purgeDateFor(u.deleted_at) })) : rows,
     pagination: {
       total: count[0].total,
       page: Number(page),
@@ -158,6 +174,12 @@ const updateUserStatus = async (id, is_active) => {
   if (!user) {
     const err = new Error('User not found')
     err.statusCode = 404
+    throw err
+  }
+
+  if (await isDeleted(id)) {
+    const err = new Error('This user is deleted — restore them first')
+    err.statusCode = 409
     throw err
   }
 

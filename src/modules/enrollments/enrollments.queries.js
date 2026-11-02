@@ -126,9 +126,10 @@ const STATUS_SQL = `(CASE
 const INACTIVE_SQL = `(${STATUS_SQL} = 'in_progress'
   AND COALESCE(la.last_activity, e.enrolled_at) < NOW() - INTERVAL ${INACTIVE_DAYS} DAY)`
 
+// Deleted users are left out of reports and exports
 const FROM_SQL = `
   FROM enrollments e
-  JOIN users u   ON u.id = e.user_id
+  JOIN users u   ON u.id = e.user_id AND u.deleted_at IS NULL
   JOIN courses c ON c.id = e.course_id
   ${LAST_ACTIVITY_JOIN}`
 
