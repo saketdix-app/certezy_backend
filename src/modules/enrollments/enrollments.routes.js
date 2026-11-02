@@ -4,6 +4,7 @@ import { Router } from 'express'
 import * as controller from './enrollments.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import { LEARNER_ROLES } from '../../constants.js'
 import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
@@ -23,8 +24,8 @@ router.post('/admin/assign', ...canAssign, validate(schemas.assignCourses), cont
 router.delete('/admin/:id', ...canAssign, controller.revokeEnrollment)
 
 // ─── STUDENT ──────────────────────────────────────────────────
-router.get('/', authenticate, role('student'), controller.getMyEnrollments)
-router.post('/free/:courseId', authenticate, role('student'), controller.enrollFree)
-router.get('/:courseId', authenticate, role('student'), controller.checkEnrollment)
+router.get('/', authenticate, role(...LEARNER_ROLES), controller.getMyEnrollments)
+router.post('/free/:courseId', authenticate, role(...LEARNER_ROLES), controller.enrollFree)
+router.get('/:courseId', authenticate, role(...LEARNER_ROLES), controller.checkEnrollment)
 
 export default router

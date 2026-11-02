@@ -6,7 +6,7 @@ import * as authQueries from '../auth/auth.queries.js'
 import { sendCourseAssignedJob } from '../../jobs/emailQueue.js'
 import { AppError } from '../../utils/http.js'
 import { isFreeCourse } from '../../utils/pricing.js'
-import { ENROLLMENT_SOURCES } from '../../constants.js'
+import { ENROLLMENT_SOURCES, LEARNER_ROLES } from '../../constants.js'
 import { invalidateCourseCache } from '../courses/courses.service.js'
 
 const httpError = (message, statusCode) => new AppError(message, statusCode)
@@ -182,7 +182,9 @@ const exportEnrollmentsCsv = async (query = {}) => {
 const assignCourses = async ({ user_id, course_ids, note, assigned_by }) => {
   const user = await authQueries.findById(user_id)
   if (!user) throw httpError('User not found', 404)
-  if (user.role !== 'student') throw httpError('Courses can only be assigned to student accounts', 400)
+  // Admins can assign courses to themselves to try them as a learner
+  if (!LEARNER_ROLES.includes(user.role))
+    throw httpError('Courses can only be assigned to learner accounts', 400)
   if (!user.is_active) throw httpError('This user account is deactivated', 400)
 
   const uniqueIds = [...new Set(course_ids.map(Number))]
