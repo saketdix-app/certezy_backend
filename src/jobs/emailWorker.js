@@ -8,6 +8,7 @@ import {
   sendInvoiceMail,
   sendSubAdminCredsMail,
   sendCourseAssignedMail,
+  sendContactReplyMail,
 } from '../utils/mailer.js'
 
 const connection = {
@@ -41,6 +42,10 @@ const worker = new Worker(
 
       case 'courseAssigned':
         await sendCourseAssignedMail(data.to, data)
+        break
+
+      case 'contactReply':
+        await sendContactReplyMail(data.to, data)
         break
 
       default:

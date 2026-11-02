@@ -68,4 +68,23 @@ const countAll = ({ status, search }) => {
 // ── Update status (admin) ──────────────────────────────────────
 const updateStatus = (id, status) => pool.query(`UPDATE contacts SET status = ? WHERE id = ?`, [status, id])
 
-export { createContact, findById, getAll, countAll, updateStatus }
+// ── Replies (admin) ────────────────────────────────────────────
+const addReply = async ({ contact_id, admin_id, message }) => {
+  const [result] = await pool.query(
+    'INSERT INTO contact_replies (contact_id, admin_id, message) VALUES (?, ?, ?)',
+    [contact_id, admin_id ?? null, message]
+  )
+  return result.insertId
+}
+
+const getReplies = (contact_id) =>
+  pool.query(
+    `SELECT r.id, r.message, r.created_at, u.name AS admin_name
+     FROM contact_replies r
+     LEFT JOIN users u ON u.id = r.admin_id
+     WHERE r.contact_id = ?
+     ORDER BY r.created_at ASC, r.id ASC`,
+    [contact_id]
+  )
+
+export { createContact, findById, getAll, countAll, updateStatus, addReply, getReplies }

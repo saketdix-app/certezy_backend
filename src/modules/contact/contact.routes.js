@@ -25,5 +25,6 @@ router.get('/', authenticate, role('admin', 'sub_admin'), controller.getAll)
 router.get('/:id', authenticate, role('admin', 'sub_admin'), controller.getById)
 
 router.put('/:id/status', authenticate, role('admin', 'sub_admin'), controller.updateStatus)
+router.post('/:id/reply', authenticate, role('admin', 'sub_admin'), controller.reply)
 
 export default router

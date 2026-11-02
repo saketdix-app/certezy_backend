@@ -20,14 +20,21 @@ transporter.verify((err) => {
 })
 
 // ─── CORE SEND ───────────────────────────────────────────────
-const sendMail = async ({ to, subject, html }) => {
+const sendMail = async ({ to, subject, html, replyTo }) => {
   await transporter.sendMail({
     from: env.smtp.from,
     to,
     subject,
     html,
+    ...(replyTo && { replyTo }),
   })
 }
+
+// Text typed by people goes into HTML emails escaped, with line breaks kept
+const escapeHtml = (s = '') =>
+  String(s)
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+    .replace(/\r?\n/g, '<br>')
 
 // ─── TEMPLATES ───────────────────────────────────────────────
 
@@ -137,11 +144,6 @@ const sendSubAdminCredsMail = (to, { name, password }) => {
 }
 
 // 5. Course assigned free by an admin
-const escapeHtml = (value = '') =>
-  String(value).replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-  )
 
 const sendCourseAssignedMail = (to, { name, courseTitles = [] }) => {
   const list = courseTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join('')
@@ -162,4 +164,34 @@ const sendCourseAssignedMail = (to, { name, courseTitles = [] }) => {
   })
 }
 
-export { sendWelcomeMail, sendDiscountMail, sendInvoiceMail, sendSubAdminCredsMail, sendCourseAssignedMail }
+// Reply to a contact-form message. Their answer goes to the support inbox.
+const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, reply, adminName }) =>
+  sendMail({
+    to,
+    replyTo: env.supportEmail,
+    subject: `Re: ${subject || 'Your message'} — Certezy`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <div style="font-size:15px">${escapeHtml(reply)}</div>
+        <p style="margin-top:20px">Best regards,<br>${escapeHtml(adminName || 'The Certezy team')}<br>
+          <span style="color:#64748b">Certezy E-Learning Pvt. Ltd. · ${env.supportEmail}</span></p>
+        <div style="margin-top:24px;padding:12px 16px;border-left:3px solid #cbd5e1;color:#64748b;font-size:13px">
+          <p style="margin:0 0 6px">Your message${
+            receivedAt ? ` of ${new Date(receivedAt).toUTCString().replace(/ GMT$/, ' UTC')}` : ''
+          }:</p>
+          <div>${escapeHtml(originalMessage)}</div>
+        </div>
+        <p style="font-size:12px;color:#94a3b8;margin-top:16px">You can reply to this email to continue the conversation.</p>
+      </div>
+    `,
+  })
+
+export {
+  sendWelcomeMail,
+  sendDiscountMail,
+  sendInvoiceMail,
+  sendSubAdminCredsMail,
+  sendCourseAssignedMail,
+  sendContactReplyMail,
+}

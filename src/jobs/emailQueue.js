@@ -46,4 +46,15 @@ const sendSubAdminCredsJob = (data) => addEmailJob('subAdminCreds', data)
 // Courses assigned free by an admin
 const sendCourseAssignedJob = (data) => addEmailJob('courseAssigned', data)
 
-export { sendWelcomeJob, sendDiscountJob, sendInvoiceJob, sendSubAdminCredsJob, sendCourseAssignedJob }
+// Admin's reply to a contact-form message
+const sendContactReplyJob = (data) => addEmailJob('contactReply', data)
+// data: { to, name, subject, originalMessage, receivedAt, reply, adminName }
+
+export {
+  sendWelcomeJob,
+  sendDiscountJob,
+  sendInvoiceJob,
+  sendSubAdminCredsJob,
+  sendCourseAssignedJob,
+  sendContactReplyJob,
+}
