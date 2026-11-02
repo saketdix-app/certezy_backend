@@ -50,8 +50,12 @@ const login = async ({ email, password }) => {
     throw err
   }
 
-  if (user.oauth_provider !== 'local' || !user.password) {
-    const err = new Error(`Please sign in with ${user.oauth_provider}`)
+  // Google/GitHub accounts have no password until they set one (Forgot password)
+  if (!user.password) {
+    const provider = user.oauth_provider === 'github' ? 'GitHub' : 'Google'
+    const err = new Error(
+      `This account signs in with ${provider}. Use "Continue with ${provider}", or "Forgot password?" to set a password.`
+    )
     err.statusCode = 400
     throw err
   }
@@ -116,6 +120,13 @@ const logout = async (refreshToken) => {
 const changePassword = async ({ userId, currentPassword, newPassword }) => {
   const userBasic = await queries.findById(userId)
   const user = await queries.findByEmail(userBasic.email)
+  if (!user.password) {
+    const err = new Error(
+      'Your account has no password yet. Use "Forgot password?" on the sign-in page to set one.'
+    )
+    err.statusCode = 400
+    throw err
+  }
 
   const isMatch = await bcrypt.compare(currentPassword, user.password)
   if (!isMatch) {

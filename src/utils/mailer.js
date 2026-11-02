@@ -190,11 +190,17 @@ const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, 
 // Forgot password: reset link, or for social accounts how they sign in
 const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) => {
   const providerName = provider === 'github' ? 'GitHub' : 'Google'
+  // provider + link: a Google/GitHub account setting its first password
+  const setting = Boolean(provider && resetUrl)
   const body = resetUrl
     ? `
-        <p>We received a request to reset the password for your Certezy account.</p>
+        <p>${
+          setting
+            ? `Your Certezy account signs in with ${providerName}. Use the button below to also set a password, so you can sign in with your email and password too.`
+            : 'We received a request to reset the password for your Certezy account.'
+        }</p>
         <p style="margin:22px 0">
-          <a href="${resetUrl}" style="display:inline-block;background:#3282B8;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">Reset my password</a>
+          <a href="${resetUrl}" style="display:inline-block;background:#3282B8;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">${setting ? 'Set my password' : 'Reset my password'}</a>
         </p>
         <p style="font-size:13px;color:#64748b">The link works once and expires in ${minutes} minutes.
           If you didn't ask for this, ignore this email — your password stays the same.</p>

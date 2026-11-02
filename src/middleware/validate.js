@@ -12,6 +12,18 @@ import {
   ADMIN_REVIEW_SOURCES,
 } from '../constants.js'
 
+// "email must be a valid email" → "Enter a valid email address"
+const friendlyMessage = (detail) => {
+  if (!detail) return null
+  const field = String(detail.context?.label ?? detail.path?.join('.') ?? '').replace(/_/g, ' ')
+  if (detail.type === 'string.email') return 'Enter a valid email address'
+  if (detail.type === 'any.required' || detail.type === 'string.empty') {
+    return `${field.charAt(0).toUpperCase()}${field.slice(1)} is required`
+  }
+  // Custom messages (e.g. the password rule) are already readable
+  return detail.message.replace(/['"]/g, '').replace(/^\w/, (c) => c.toUpperCase())
+}
+
 const validate = (schema) => {
   return (req, res, next) => {
     const { error, value } = schema.validate(req.body, {
@@ -20,9 +32,11 @@ const validate = (schema) => {
     })
 
     if (error) {
-      const err = new Error('Validation failed')
+      const errors = error.details.map((d) => d.message.replace(/['"]/g, ''))
+      // Say what's wrong (first problem) instead of a bare "Validation failed"
+      const err = new Error(friendlyMessage(error.details[0]) || 'Please check the form and try again')
       err.statusCode = 422
-      err.errors = error.details.map((d) => d.message.replace(/['"]/g, ''))
+      err.errors = errors
       return next(err)
     }
 
@@ -42,17 +56,17 @@ const strongPassword = Joi.string()
 
 const registerSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
-  email: Joi.string().email().max(150).lowercase().required(),
+  email: Joi.string().trim().email().max(150).lowercase().required(),
   password: strongPassword.required(),
 })
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().lowercase().required(),
+  email: Joi.string().trim().email().lowercase().required(),
   password: Joi.string().required(),
 })
 
 const forgotPasswordSchema = Joi.object({
-  email: Joi.string().email().lowercase().required(),
+  email: Joi.string().trim().email().lowercase().required(),
 })
 
 const resetPasswordSchema = Joi.object({
@@ -281,7 +295,7 @@ const csvImportSchema = Joi.object({
 
 const createSubAdminSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
-  email: Joi.string().email().max(150).lowercase().required(),
+  email: Joi.string().trim().email().max(150).lowercase().required(),
   password: strongPassword.required(),
   can_manage_courses: Joi.number().integer().valid(0, 1).optional(),
   can_manage_students: Joi.number().integer().valid(0, 1).optional(),
