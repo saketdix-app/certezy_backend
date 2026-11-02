@@ -59,7 +59,7 @@ const buildFilters = ({ status, category_id, category, level, is_featured, searc
 
 const LIST_COLUMNS = `
   c.id, c.title, c.slug, c.short_desc, c.thumbnail,
-  c.price, c.original_price, c.price_inr, c.original_price_inr, c.pricing_type,
+  c.price, c.original_price, c.price_inr, c.original_price_inr, c.inr_enabled, c.pricing_type,
   c.level, c.language, c.status, c.is_featured,
   c.total_duration, c.total_lessons, c.enrolled_count,
   c.rating_avg, c.rating_count, c.certificate_eligible,
@@ -190,10 +190,11 @@ const createCourse = ({
   )
 
 // ── India (rupee) prices — saved separately from the main course row ─────
-const updateInrPricing = (id, { price_inr, original_price_inr }) =>
-  pool.query('UPDATE courses SET price_inr = ?, original_price_inr = ? WHERE id = ?', [
+const updateInrPricing = (id, { price_inr, original_price_inr, inr_enabled }) =>
+  pool.query('UPDATE courses SET price_inr = ?, original_price_inr = ?, inr_enabled = ? WHERE id = ?', [
     price_inr ?? null,
     original_price_inr ?? null,
+    inr_enabled ? 1 : 0,
     id,
   ])
 

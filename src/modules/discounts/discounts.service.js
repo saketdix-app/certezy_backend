@@ -69,9 +69,10 @@ const createDiscountLink = async (
   }
 
   // Rupee price (optional — without it the USD discount share is applied)
-  const { price_inr: coursePriceInr } = describePricing(course)
+  const { price_inr: coursePriceInr, inr_enabled: inrEnabled } = describePricing(course)
   let discountPriceInr = null
-  if (discount_price_inr != null && discount_price_inr !== '') {
+  // Courses sold in USD only ignore a rupee price
+  if (inrEnabled && discount_price_inr != null && discount_price_inr !== '') {
     discountPriceInr = Math.round(Number(discount_price_inr) * 100) / 100
     if (!(discountPriceInr >= 1) || discountPriceInr >= coursePriceInr) {
       throw fail(400, `India price must be between ₹1 and the course's India price (₹${coursePriceInr})`)

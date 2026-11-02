@@ -80,14 +80,31 @@ pm2 logs --lines 100 | grep -i -E "razorpay|paypal|payment"
 
 ## 6. Which currency a visitor gets
 
-Decided by the server from the visitor's IP (`src/utils/geo.js`, offline GeoLite data
-from `geoip-lite`):
+Each course has a **"Sell in Indian rupees (₹) to visitors from India"** switch
+(Admin → Courses → edit course). It is **off by default**.
 
-- **India** → rupee prices, **Razorpay** only
-- **everywhere else** (and unknown IPs) → dollar prices, **PayPal** only
+| Course switch | Visitor from India | Everyone else |
+|---|---|---|
+| Off (default) | US$ price, **PayPal** | US$ price, **PayPal** |
+| On | ₹ price, **Razorpay** | US$ price, **PayPal** |
 
-`GET /api/v1/geo` returns `{ country, currency }`. Creating a Razorpay order from a
-non-Indian IP, or a PayPal order from an Indian IP, is refused (403), so the price
-can't be changed in the browser. Visitors on a VPN get the VPN's country.
+The visitor's country comes from their IP (`src/utils/geo.js`, offline GeoLite data
+from `geoip-lite`). The server enforces the rule when creating an order (403 for the
+wrong gateway), so it can't be changed in the browser. Rupee prices you saved are
+kept while the switch is off and come back when you turn it on.
 
 For local development only, `GEO_FORCE_COUNTRY=US` (or `IN`) in `.env` forces a country.
+
+## 7. PayPal only (no Razorpay)
+
+With every course's rupee switch off, only PayPal is used. The backend `.env` needs:
+
+```env
+FRONTEND_URL=https://certezy.com
+PAYPAL_CLIENT_ID=your-live-client-id
+PAYPAL_CLIENT_SECRET=your-live-secret
+PAYPAL_MODE=live
+```
+
+The `RAZORPAY_*` lines can stay empty or be removed. Admin → Payments → Check gateways
+will then show Razorpay as "not configured" — that's expected.

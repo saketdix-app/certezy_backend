@@ -39,17 +39,18 @@ export const normalisePricing = ({ pricing_type, price, original_price }) => {
  * India prices: optional. Empty → shown / charged as the USD price converted
  * at the current rate. A list price must be above the selling price.
  */
-export const normaliseInrPricing = ({ pricing_type, price_inr, original_price_inr }) => {
-  if (pricing_type === 'free') return { price_inr: null, original_price_inr: null }
+export const normaliseInrPricing = ({ pricing_type, price_inr, original_price_inr, inr_enabled }) => {
+  const enabled = inr_enabled === true || inr_enabled === 1 || inr_enabled === '1' || inr_enabled === 'true'
+  if (pricing_type === 'free') return { price_inr: null, original_price_inr: null, inr_enabled: false }
   const toNum = (v) => (v === '' || v == null ? null : Number(v))
   const p = toNum(price_inr)
   const o = toNum(original_price_inr)
-  if (p == null) return { price_inr: null, original_price_inr: null }
+  if (p == null) return { price_inr: null, original_price_inr: null, inr_enabled: enabled }
   if (!(p > 0)) throw AppError.badRequest('India price (₹) must be greater than 0, or left empty')
   if (o != null && o <= p) {
     throw AppError.badRequest('India list price (₹) must be higher than the India price (or left empty)')
   }
-  return { price_inr: p, original_price_inr: o }
+  return { price_inr: p, original_price_inr: o, inr_enabled: enabled }
 }
 
 // ── Get all courses (filters + pagination + sorting) ───────────────────────
@@ -181,15 +182,18 @@ const updateCourse = async (id, body) => {
   if (
     body.price_inr !== undefined ||
     body.original_price_inr !== undefined ||
+    body.inr_enabled !== undefined ||
     pricing.pricing_type === 'free'
   ) {
     await queries.updateInrPricing(
       id,
       normaliseInrPricing({
         pricing_type: pricing.pricing_type,
-        price_inr: body.price_inr !== undefined ? body.price_inr : current.price_inr,
+        // current.price_inr is the shown price; saved_* are the admin's own values
+        price_inr: body.price_inr !== undefined ? body.price_inr : current.saved_price_inr,
         original_price_inr:
-          body.original_price_inr !== undefined ? body.original_price_inr : current.original_price_inr,
+          body.original_price_inr !== undefined ? body.original_price_inr : current.saved_original_price_inr,
+        inr_enabled: body.inr_enabled !== undefined ? body.inr_enabled : current.inr_enabled,
       })
     )
   }

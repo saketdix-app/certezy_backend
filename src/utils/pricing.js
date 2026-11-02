@@ -6,12 +6,21 @@
 //   pricing_type   'free' | 'paid'
 //   price          what the student pays (USD)
 //   original_price optional list price; when > price the course is "discounted"
+//   inr_enabled    1 = visitors from India see and pay rupees (Razorpay);
+//                  0 (default) = everyone pays the USD price (PayPal)
 //   price_inr / original_price_inr   optional India prices in rupees; when empty
 //                  they are converted from USD at the current rate
 
 import { usdToInr } from './fx.js'
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100
+
+/** Does this course sell in rupees to visitors from India? Off unless switched on. */
+export const isInrEnabled = (course) => Number(course?.inr_enabled) === 1
+
+/** 'INR' only for India visitors on courses that sell in rupees; otherwise 'USD'. */
+export const checkoutCurrency = (course, regionCurrency) =>
+  regionCurrency === 'INR' && isInrEnabled(course) ? 'INR' : 'USD'
 
 export const isFreeCourse = (course) => course?.pricing_type === 'free' || Number(course?.price || 0) <= 0
 
@@ -29,11 +38,36 @@ export const describePricing = (course) => {
       is_discounted_inr: false,
       discount_pct_inr: 0,
       inr_price_set: false,
+      inr_enabled: false,
     }
   }
   const price = round2(course.price)
   const original = course.original_price != null ? round2(course.original_price) : null
   const isDiscounted = original != null && original > price
+  const usd = {
+    pricing_type: 'paid',
+    price,
+    original_price: isDiscounted ? original : null,
+    is_discounted: isDiscounted,
+    discount_pct: isDiscounted ? Math.round(((original - price) / original) * 100) : 0,
+  }
+  // The admin's saved rupee prices, for the course form (kept while rupees are off)
+  const saved = {
+    saved_price_inr: course.price_inr != null ? round2(course.price_inr) : null,
+    saved_original_price_inr: course.original_price_inr != null ? round2(course.original_price_inr) : null,
+  }
+  if (!isInrEnabled(course)) {
+    return {
+      ...usd,
+      inr_enabled: false,
+      price_inr: null,
+      original_price_inr: null,
+      is_discounted_inr: false,
+      discount_pct_inr: 0,
+      inr_price_set: false,
+      ...saved,
+    }
+  }
   // India price: the admin's rupee price, or the USD price converted
   const inrSet = course.price_inr != null && Number(course.price_inr) > 0
   const priceInr = inrSet ? round2(course.price_inr) : usdToInr(price)
@@ -47,16 +81,14 @@ export const describePricing = (course) => {
   const isDiscountedInr = originalInrRaw != null && originalInrRaw > priceInr
 
   return {
-    pricing_type: 'paid',
-    price,
-    original_price: isDiscounted ? original : null,
-    is_discounted: isDiscounted,
-    discount_pct: isDiscounted ? Math.round(((original - price) / original) * 100) : 0,
+    ...usd,
+    inr_enabled: true,
     price_inr: priceInr,
     original_price_inr: isDiscountedInr ? originalInrRaw : null,
     is_discounted_inr: isDiscountedInr,
     discount_pct_inr: isDiscountedInr ? Math.round(((originalInrRaw - priceInr) / originalInrRaw) * 100) : 0,
     inr_price_set: inrSet,
+    ...saved,
   }
 }
 
@@ -65,6 +97,8 @@ export const describePricing = (course) => {
  * the same share of it as the link takes off the USD price.
  */
 export const resolveChargeAmountInr = (course, discount = null) => {
+  // Rupees off for this course → no rupee amount (it's sold in USD only)
+  if (!isInrEnabled(course)) return { amount: null, original_amount: null }
   const p = describePricing(course)
   if (!discount) return { amount: p.price_inr, original_amount: p.original_price_inr ?? p.price_inr }
   // Rupee price set by the admin on the link

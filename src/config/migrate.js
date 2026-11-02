@@ -201,6 +201,11 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    name: 'courses.inr_enabled (sell in rupees to India; off = USD for everyone)',
+    run: () =>
+      addColumnIfMissing('courses', 'inr_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER original_price_inr'),
+  },
+  {
     name: 'users.deleted_at / deleted_by / was_active / purged_at (delete with 30-day recovery)',
     run: async () => {
       const added = await Promise.all([
