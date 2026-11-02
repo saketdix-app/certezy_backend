@@ -17,6 +17,13 @@ const errorHandler = (err, req, res, next) => {
     message = 'Referenced record does not exist'
   }
 
+  // Unexpected errors (database, code bugs) are logged below, not shown to
+  // visitors. Errors the code raises on purpose (with a statusCode, e.g. a
+  // payment gateway's reason) keep their message.
+  if (!err.statusCode && statusCode >= 500 && env.isProd) {
+    message = 'Something went wrong on our side. Please try again in a moment.'
+  }
+
   const response = {
     success: false,
     message,
