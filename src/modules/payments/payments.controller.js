@@ -89,7 +89,18 @@ const getRevenueStats = async (req, res, next) => {
   }
 }
 
+// ── GET /payments/admin/gateways — credential check, no money moves ──────
+const checkGateways = async (req, res, next) => {
+  try {
+    const data = await service.checkGateways()
+    return success(res, { message: 'Gateway status', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export {
+  checkGateways,
   razorpayCreateOrder,
   razorpayVerify,
   razorpayWebhook,
