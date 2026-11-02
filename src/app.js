@@ -24,6 +24,7 @@ import attemptRoutes from './modules/attempts/attempts.routes.js'
 import progressRoutes from './modules/progress/progress.routes.js'
 import paymentRoutes from './modules/payments/payments.routes.js'
 import discountRoutes from './modules/discounts/discounts.routes.js'
+import geoRoutes from './modules/geo.routes.js'
 import certificateRoutes from './modules/certificates/certificates.routes.js'
 import reviewRoutes from './modules/reviews/reviews.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
@@ -53,6 +54,7 @@ const ROUTES = [
   ['/contact', contactRoutes],
   ['/upload', uploadRoutes],
   ['/imports', importRoutes],
+  ['/geo', geoRoutes],
 ]
 
 const app = express()

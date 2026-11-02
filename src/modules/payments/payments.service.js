@@ -246,7 +246,19 @@ const getPaymentById = async (id) => {
 // RAZORPAY
 // ─────────────────────────────────────────────────────────────────────────
 
-const razorpayCreateOrder = async (user_id, body) => {
+// Region comes from the visitor's IP (utils/geo.js): India pays in ₹ with
+// Razorpay, everyone else in $ with PayPal — not something the browser chooses.
+const assertRegion = (region, currency) => {
+  if (!region || region.currency === currency) return
+  throw AppError.forbidden(
+    currency === 'INR'
+      ? 'Rupee payments (Razorpay) are only available in India — please pay in USD with PayPal'
+      : 'From India, please pay in rupees with Razorpay'
+  )
+}
+
+const razorpayCreateOrder = async (user_id, body, region) => {
+  assertRegion(region, 'INR')
   // India: the course's rupee price (or the USD price converted), never a client amount
   const { course, inr } = await prepareCheckout(user_id, body)
   const { amount, original_amount } = inr
@@ -324,7 +336,8 @@ const razorpayVerify = async (
 // PAYPAL
 // ─────────────────────────────────────────────────────────────────────────
 
-const paypalCreateOrder = async (user_id, body) => {
+const paypalCreateOrder = async (user_id, body, region) => {
+  assertRegion(region, 'USD')
   const { course, amount, original_amount } = await prepareCheckout(user_id, body)
 
   let order
