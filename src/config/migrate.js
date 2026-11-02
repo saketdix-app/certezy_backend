@@ -146,6 +146,14 @@ const STEPS = [
     run: () => addColumnIfMissing('courses', 'original_price', 'DECIMAL(10,2) NULL AFTER price'),
   },
   {
+    name: 'courses.price_inr (price for India, in rupees)',
+    run: () => addColumnIfMissing('courses', 'price_inr', 'DECIMAL(10,2) NULL AFTER original_price'),
+  },
+  {
+    name: 'courses.original_price_inr (list price for India, in rupees)',
+    run: () => addColumnIfMissing('courses', 'original_price_inr', 'DECIMAL(10,2) NULL AFTER price_inr'),
+  },
+  {
     name: 'reviews.user_id nullable (reviews entered by an admin have no student account)',
     run: async () => {
       const col = await columnInfo('reviews', 'user_id')

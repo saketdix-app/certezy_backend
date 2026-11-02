@@ -121,6 +121,8 @@ const updateProfile = (id, { name, mobile, gender }) =>
     id,
   ])
 
+const updateAvatar = (id, avatar) => pool.query('UPDATE users SET avatar = ? WHERE id = ?', [avatar, id])
+
 export {
   findByEmail,
   findById,
@@ -135,4 +137,5 @@ export {
   countUsers,
   updateUserStatus,
   updateProfile,
+  updateAvatar,
 }

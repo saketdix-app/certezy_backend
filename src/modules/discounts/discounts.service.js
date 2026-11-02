@@ -5,6 +5,15 @@ import * as queries from './discounts.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { findById, findByEmail } from '../auth/auth.queries.js'
 import env from '../../config/env.js'
+import { resolveChargeAmountInr } from '../../utils/pricing.js'
+
+// Rupee version of a discount link (same share off the course's India price)
+const inrFor = async (course_id, discount_price) => {
+  const [rows] = await courseQueries.getCourseById(course_id)
+  if (!rows.length) return { discount_price_inr: null, original_price_inr: null }
+  const { amount, original_amount } = resolveChargeAmountInr(rows[0], { discount_price })
+  return { discount_price_inr: amount, original_price_inr: original_amount }
+}
 import { generateUUID } from '../../utils/generate.js'
 import { sendDiscountJob } from '../../jobs/emailQueue.js'
 
@@ -127,6 +136,7 @@ const getOffer = async (token) => {
     original_price: o.original_price,
     discount_price: o.discount_price,
     discount_pct: o.discount_pct,
+    ...(await inrFor(o.course_id, o.discount_price)),
     expires_at: o.expires_at,
     email_hint: maskEmail(o.email ?? ''),
   }
@@ -160,6 +170,7 @@ const verifyDiscountToken = async (token, user_id) => {
     original_price: discount.original_price,
     discount_price: discount.discount_price,
     discount_pct: discount.discount_pct,
+    ...(await inrFor(discount.course_id, discount.discount_price)),
     expires_at: discount.expires_at,
   }
 }

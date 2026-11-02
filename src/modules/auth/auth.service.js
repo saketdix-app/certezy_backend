@@ -1,6 +1,7 @@
 // src/modules/auth/auth.service.js
 
 import bcrypt from 'bcryptjs'
+import { isOwnUploadUrl } from '../../utils/upload.js'
 import * as queries from './auth.queries.js'
 import tokenUtil from '../../utils/token.js'
 import { sendWelcomeJob } from '../../jobs/emailQueue.js'
@@ -164,8 +165,41 @@ const updateUserStatus = async (id, is_active) => {
   return await queries.findById(id)
 }
 
-const updateProfile = async (userId, { name, mobile, gender }) => {
-  await queries.updateProfile(userId, { name, mobile, gender })
+// International mobile numbers in E.164 form: "+" + country code + number,
+// 8–15 digits in all (e.g. +919893596975, +18665589561)
+const normalizeMobile = (value) => {
+  if (value == null || String(value).trim() === '') return null
+  const digits = String(value).replace(/[\s\-().]/g, '')
+  if (!/^\+[1-9]\d{7,14}$/.test(digits)) {
+    const err = new Error('Enter a valid mobile number with country code, e.g. +91 98765 43210')
+    err.statusCode = 400
+    throw err
+  }
+  return digits
+}
+
+const updateProfile = async (userId, { name, mobile, gender, avatar }) => {
+  const cleanName = String(name ?? '').trim()
+  if (cleanName.length < 2) {
+    const err = new Error('Please enter your full name')
+    err.statusCode = 400
+    throw err
+  }
+  await queries.updateProfile(userId, {
+    name: cleanName,
+    mobile: normalizeMobile(mobile),
+    gender: gender || null,
+  })
+
+  // Photo: only a file uploaded to our own avatars folder, or null to remove it
+  if (avatar !== undefined) {
+    if (avatar !== null && !isOwnUploadUrl(avatar, 'avatars')) {
+      const err = new Error('Upload the photo with the Upload Photo button')
+      err.statusCode = 400
+      throw err
+    }
+    await queries.updateAvatar(userId, avatar)
+  }
   const user = await queries.findById(userId)
   return { user }
 }

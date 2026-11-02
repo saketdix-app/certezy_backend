@@ -18,6 +18,19 @@ router.post(
   controller.getPresignedUrl
 )
 
+// Any signed-in user: pre-signed URL for their own profile photo (avatar kind only)
+router.post(
+  '/avatar-url',
+  authenticate,
+  validate(schemas.generatePresignedUrl),
+  (req, res, next) => {
+    req.body.kind = 'avatar'
+    req.body.isPublic = true
+    next()
+  },
+  controller.getPresignedUrl
+)
+
 // Storage health + upload limits (admin only)
 router.get('/status', authenticate, role('admin', 'sub_admin'), controller.getStatus)
 
