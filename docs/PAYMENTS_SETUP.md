@@ -77,3 +77,17 @@ pm2 logs --lines 100 | grep -i -E "razorpay|paypal|payment"
 | PayPal … invalid_client / rejected | keys and `PAYPAL_MODE` don't match | live keys need `PAYPAL_MODE=live` |
 | PayPal … PAYEE_ACCOUNT_RESTRICTED | PayPal account limited | resolve in the PayPal account |
 | Please allow popups for PayPal | (old message — now the tab goes to PayPal instead) | — |
+
+## 6. Which currency a visitor gets
+
+Decided by the server from the visitor's IP (`src/utils/geo.js`, offline GeoLite data
+from `geoip-lite`):
+
+- **India** → rupee prices, **Razorpay** only
+- **everywhere else** (and unknown IPs) → dollar prices, **PayPal** only
+
+`GET /api/v1/geo` returns `{ country, currency }`. Creating a Razorpay order from a
+non-Indian IP, or a PayPal order from an Indian IP, is refused (403), so the price
+can't be changed in the browser. Visitors on a VPN get the VPN's country.
+
+For local development only, `GEO_FORCE_COUNTRY=US` (or `IN`) in `.env` forces a country.

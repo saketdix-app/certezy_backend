@@ -1,12 +1,13 @@
 // src/modules/payments/payments.controller.js
 
+import { regionForRequest } from '../../utils/geo.js'
 import * as service from './payments.service.js'
 import { success } from '../../utils/response.js'
 
 // ── POST /payments/razorpay/create-order ───────────────────────────────────
 const razorpayCreateOrder = async (req, res, next) => {
   try {
-    const result = await service.razorpayCreateOrder(req.user.id, req.body)
+    const result = await service.razorpayCreateOrder(req.user.id, req.body, regionForRequest(req))
     return success(res, { statusCode: 201, message: 'Razorpay order created', data: result })
   } catch (err) {
     next(err)
@@ -37,7 +38,7 @@ const razorpayWebhook = async (req, res, next) => {
 // ── POST /payments/paypal/create-order ────────────────────────────────────
 const paypalCreateOrder = async (req, res, next) => {
   try {
-    const result = await service.paypalCreateOrder(req.user.id, req.body)
+    const result = await service.paypalCreateOrder(req.user.id, req.body, regionForRequest(req))
     return success(res, { statusCode: 201, message: 'PayPal order created', data: result })
   } catch (err) {
     next(err)
