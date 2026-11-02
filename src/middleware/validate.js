@@ -51,6 +51,15 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 })
 
+const forgotPasswordSchema = Joi.object({
+  email: Joi.string().email().lowercase().required(),
+})
+
+const resetPasswordSchema = Joi.object({
+  token: Joi.string().hex().length(64).required().messages({ '*': 'This reset link is invalid' }),
+  password: strongPassword.required(),
+})
+
 const changePasswordSchema = Joi.object({
   currentPassword: Joi.string().required(),
   newPassword: strongPassword.required(),
@@ -303,6 +312,8 @@ const schemas = {
   updateAdminReview: updateAdminReviewSchema,
   csvImport: csvImportSchema,
   changePassword: changePasswordSchema,
+  forgotPassword: forgotPasswordSchema,
+  resetPassword: resetPasswordSchema,
   createCategory: createCategorySchema,
   updateCategory: updateCategorySchema,
   createCourse: createCourseSchema,

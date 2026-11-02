@@ -9,6 +9,7 @@ import {
   sendSubAdminCredsMail,
   sendCourseAssignedMail,
   sendContactReplyMail,
+  sendPasswordResetMail,
 } from '../utils/mailer.js'
 
 const connection = {
@@ -46,6 +47,10 @@ const worker = new Worker(
 
       case 'contactReply':
         await sendContactReplyMail(data.to, data)
+        break
+
+      case 'passwordReset':
+        await sendPasswordResetMail(data.to, data)
         break
 
       default:

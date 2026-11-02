@@ -27,4 +27,13 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-export { loginLimiter, registerLimiter, apiLimiter }
+// Forgot-password emails: a few per hour per IP (stops inbox flooding)
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: env.isProd ? 5 : 500,
+  message: { success: false, message: 'Too many reset requests. Try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+export { loginLimiter, registerLimiter, apiLimiter, passwordResetLimiter }

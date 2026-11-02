@@ -256,7 +256,7 @@ const STATIC_PAGES = {
 
 // Private or one-off pages: rendered by the app, kept out of search results
 const NOINDEX = [
-  /^\/(login|register|change-password|checkout)(\/|$)/,
+  /^\/(login|register|change-password|checkout|forgot-password|reset-password)(\/|$)/,
   /^\/(student|admin|oauth|payment|offer)(\/|$)/,
   /^\/verify\/.+/,
 ]
