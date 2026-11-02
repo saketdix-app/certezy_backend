@@ -201,6 +201,9 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    // No foreign key: on some installs users.id has a different integer type,
+    // which made the constraint (and so the whole table) fail. Rows go with
+    // the user in the account purge (userDeletion.js).
     name: 'password_resets table (forgot-password links)',
     run: async () => {
       if (await tableExists('password_resets')) return false
@@ -213,8 +216,7 @@ const STEPS = [
           used_at     DATETIME NULL,
           created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uq_password_resets_token (token_hash),
-          INDEX idx_password_resets_user (user_id),
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          INDEX idx_password_resets_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       return true

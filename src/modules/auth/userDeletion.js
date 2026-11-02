@@ -79,6 +79,7 @@ const OWNED_TABLES = [
   'reviews',
   'discount_links',
   'contacts',
+  'password_resets',
 ]
 
 const eraseUser = async (id) => {
