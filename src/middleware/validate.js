@@ -93,6 +93,8 @@ const courseFields = {
   // India prices in rupees (empty → converted from USD)
   price_inr: Joi.number().min(0).precision(2).allow(null, ''),
   original_price_inr: Joi.number().min(0).precision(2).allow(null, ''),
+  // Sell in rupees to visitors from India (off → everyone pays USD with PayPal)
+  inr_enabled: Joi.boolean(),
   level: Joi.string().valid(...COURSE_LEVELS),
   language: Joi.string().max(50),
   status: Joi.string().valid(...COURSE_STATUSES),

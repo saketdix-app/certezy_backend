@@ -24,7 +24,12 @@ import * as discountQueries from '../discounts/discounts.queries.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { AppError } from '../../utils/http.js'
 import { findById as findUserById } from '../auth/auth.queries.js'
-import { isFreeCourse, resolveChargeAmount, resolveChargeAmountInr } from '../../utils/pricing.js'
+import {
+  isFreeCourse,
+  resolveChargeAmount,
+  resolveChargeAmountInr,
+  checkoutCurrency,
+} from '../../utils/pricing.js'
 
 // ─── Gateway Clients ──────────────────────────────────────────────────────
 // Created on first use so the API still boots (and free courses still work)
@@ -248,19 +253,22 @@ const getPaymentById = async (id) => {
 
 // Region comes from the visitor's IP (utils/geo.js): India pays in ₹ with
 // Razorpay, everyone else in $ with PayPal — not something the browser chooses.
-const assertRegion = (region, currency) => {
-  if (!region || region.currency === currency) return
+// Which gateway a buyer must use: rupees (Razorpay) only for visitors from
+// India on courses that sell in rupees; everyone else pays USD with PayPal.
+const assertCheckoutCurrency = (course, region, currency) => {
+  const expected = checkoutCurrency(course, region?.currency)
+  if (expected === currency) return
   throw AppError.forbidden(
-    currency === 'INR'
-      ? 'Rupee payments (Razorpay) are only available in India — please pay in USD with PayPal'
+    expected === 'USD'
+      ? 'This course is priced in US dollars — please pay with PayPal'
       : 'From India, please pay in rupees with Razorpay'
   )
 }
 
 const razorpayCreateOrder = async (user_id, body, region) => {
-  assertRegion(region, 'INR')
   // India: the course's rupee price (or the USD price converted), never a client amount
   const { course, inr } = await prepareCheckout(user_id, body)
+  assertCheckoutCurrency(course, region, 'INR')
   const { amount, original_amount } = inr
 
   const [result] = await queries.createPayment({
@@ -337,8 +345,8 @@ const razorpayVerify = async (
 // ─────────────────────────────────────────────────────────────────────────
 
 const paypalCreateOrder = async (user_id, body, region) => {
-  assertRegion(region, 'USD')
   const { course, amount, original_amount } = await prepareCheckout(user_id, body)
+  assertCheckoutCurrency(course, region, 'USD')
 
   let order
   try {

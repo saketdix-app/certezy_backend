@@ -533,7 +533,7 @@ export const llmsTxt = async () => {
     '',
     `> ${DEFAULT_DESC}`,
     '',
-    'Based in Indore, Madhya Pradesh, India. Courses are online and self-paced; prices are shown in INR for India and USD elsewhere.',
+    'Based in Indore, Madhya Pradesh, India. Courses are online and self-paced.',
     '',
     '## Courses',
     ...courses.map(
