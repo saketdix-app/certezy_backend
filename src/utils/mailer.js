@@ -187,7 +187,39 @@ const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, 
     `,
   })
 
+// Forgot password: reset link, or for social accounts how they sign in
+const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) => {
+  const providerName = provider === 'github' ? 'GitHub' : 'Google'
+  const body = resetUrl
+    ? `
+        <p>We received a request to reset the password for your Certezy account.</p>
+        <p style="margin:22px 0">
+          <a href="${resetUrl}" style="display:inline-block;background:#3282B8;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">Reset my password</a>
+        </p>
+        <p style="font-size:13px;color:#64748b">The link works once and expires in ${minutes} minutes.
+          If you didn't ask for this, ignore this email — your password stays the same.</p>
+        <p style="font-size:12px;color:#94a3b8">If the button doesn't work, open: ${resetUrl}</p>`
+    : `
+        <p>We received a request to reset the password for your Certezy account.</p>
+        <p>Your account signs in with <b>${providerName}</b>, so there is no Certezy password to reset.
+          Go to <a href="${env.frontendUrl}/login">${env.frontendUrl.replace(/^https?:\/\//, '')}/login</a>
+          and choose <b>Continue with ${providerName}</b>.</p>
+        <p style="font-size:13px;color:#64748b">If you didn't ask for this, you can ignore this email.</p>`
+  return sendMail({
+    to,
+    subject: 'Reset your Certezy password',
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        ${body}
+        <p style="margin-top:20px">— Certezy E-Learning Pvt. Ltd.</p>
+      </div>
+    `,
+  })
+}
+
 export {
+  sendPasswordResetMail,
   sendWelcomeMail,
   sendDiscountMail,
   sendInvoiceMail,

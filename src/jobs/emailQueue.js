@@ -50,7 +50,12 @@ const sendCourseAssignedJob = (data) => addEmailJob('courseAssigned', data)
 const sendContactReplyJob = (data) => addEmailJob('contactReply', data)
 // data: { to, name, subject, originalMessage, receivedAt, reply, adminName }
 
+// Forgot-password link (or, for Google/GitHub accounts, how to sign in)
+const sendPasswordResetJob = (data) => addEmailJob('passwordReset', data)
+// data: { to, name, resetUrl?, minutes?, provider? }
+
 export {
+  sendPasswordResetJob,
   sendWelcomeJob,
   sendDiscountJob,
   sendInvoiceJob,

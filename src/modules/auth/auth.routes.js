@@ -5,7 +5,7 @@ import passport from '../../config/passport.js'
 import * as controller from './auth.controller.js'
 import authenticate from '../../middleware/auth.js'
 import { validate, schemas } from '../../middleware/validate.js'
-import { loginLimiter, registerLimiter } from '../../middleware/rateLimit.js'
+import { loginLimiter, registerLimiter, passwordResetLimiter } from '../../middleware/rateLimit.js'
 import permission from '../../middleware/permission.js'
 import role from '../../middleware/role.js'
 
@@ -16,6 +16,21 @@ router.post('/register', registerLimiter, validate(schemas.register), controller
 router.post('/login', loginLimiter, validate(schemas.login), controller.login)
 router.post('/refresh', controller.refresh)
 router.post('/logout', controller.logout)
+
+// Forgot password → email link → new password
+router.post(
+  '/forgot-password',
+  passwordResetLimiter,
+  validate(schemas.forgotPassword),
+  controller.forgotPassword
+)
+router.get('/reset-password/:token', controller.checkResetLink)
+router.post(
+  '/reset-password',
+  passwordResetLimiter,
+  validate(schemas.resetPassword),
+  controller.resetPasswordWithToken
+)
 
 router.post('/change-password', authenticate, validate(schemas.changePassword), controller.changePassword)
 router.put('/profile', authenticate, controller.updateProfile)

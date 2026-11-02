@@ -2,6 +2,7 @@
 
 import * as service from './auth.service.js'
 import { softDeleteUser, restoreUser, RECOVERY_DAYS } from './userDeletion.js'
+import { requestPasswordReset, checkResetToken, resetPassword } from './passwordReset.js'
 import { success } from '../../utils/response.js'
 
 import env from '../../config/env.js'
@@ -190,7 +191,44 @@ const updateUserStatus = async (req, res, next) => {
   }
 }
 
+// ── POST /auth/forgot-password — email a reset link ───────────────────────
+// Same answer whether or not the email has an account.
+const forgotPassword = async (req, res, next) => {
+  try {
+    await requestPasswordReset(req.body.email)
+    return success(res, {
+      message:
+        'If an account exists for that email, a reset link is on its way. Check your inbox and spam folder.',
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /auth/reset-password/:token — is the link still valid? ────────────
+const checkResetLink = async (req, res, next) => {
+  try {
+    const valid = await checkResetToken(req.params.token)
+    return success(res, { message: valid ? 'Link valid' : 'Link invalid', data: { valid } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── POST /auth/reset-password — set the new password ──────────────────────
+const resetPasswordWithToken = async (req, res, next) => {
+  try {
+    await resetPassword(req.body.token, req.body.password)
+    return success(res, { message: 'Password changed. Sign in with your new password.' })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export {
+  forgotPassword,
+  checkResetLink,
+  resetPasswordWithToken,
   register,
   login,
   refresh,
