@@ -18,14 +18,13 @@ import * as courseQueries from '../courses/courses.queries.js'
 import { createEnrollment } from '../enrollments/enrollments.service.js'
 import { generateInvoice } from '../../utils/invoice.js'
 import { generateInvoiceNumber } from '../../utils/generate.js'
-import { convertUSDtoINR } from '../../utils/currency.js'
 import { sendInvoiceJob } from '../../jobs/emailQueue.js'
 import { markDiscountUsed, verifyDiscountToken } from '../discounts/discounts.service.js'
 import * as discountQueries from '../discounts/discounts.queries.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { AppError } from '../../utils/http.js'
 import { findById as findUserById } from '../auth/auth.queries.js'
-import { isFreeCourse, resolveChargeAmount } from '../../utils/pricing.js'
+import { isFreeCourse, resolveChargeAmount, resolveChargeAmountInr } from '../../utils/pricing.js'
 
 // ─── Gateway Clients ──────────────────────────────────────────────────────
 // Created on first use so the API still boots (and free courses still work)
@@ -158,7 +157,12 @@ const prepareCheckout = async (user_id, { course_id, discount_link_id }) => {
     }
   }
 
-  return { course, discount, ...resolveChargeAmount(course, discount) }
+  return {
+    course,
+    discount,
+    ...resolveChargeAmount(course, discount),
+    inr: resolveChargeAmountInr(course, discount),
+  }
 }
 
 const assertOwnPendingPayment = (payment, user_id) => {
@@ -243,8 +247,9 @@ const getPaymentById = async (id) => {
 // ─────────────────────────────────────────────────────────────────────────
 
 const razorpayCreateOrder = async (user_id, body) => {
-  const { course, amount: usdAmount, original_amount } = await prepareCheckout(user_id, body)
-  const amount = await convertUSDtoINR(usdAmount)
+  // India: the course's rupee price (or the USD price converted), never a client amount
+  const { course, inr } = await prepareCheckout(user_id, body)
+  const { amount, original_amount } = inr
 
   const [result] = await queries.createPayment({
     user_id,

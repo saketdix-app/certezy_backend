@@ -90,8 +90,8 @@ const changePassword = async (req, res, next) => {
 
 const updateProfile = async (req, res, next) => {
   try {
-    const { name, mobile, gender } = req.body
-    const result = await service.updateProfile(req.user.id, { name, mobile, gender })
+    const { name, mobile, gender, avatar } = req.body
+    const result = await service.updateProfile(req.user.id, { name, mobile, gender, avatar })
     return success(res, { message: 'Profile updated successfully', data: result })
   } catch (err) {
     next(err)

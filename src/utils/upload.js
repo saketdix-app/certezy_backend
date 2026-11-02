@@ -70,6 +70,10 @@ const deleteFile = async (key) => {
 
 // ── Pre-signed PUT URL for direct browser → S3 upload ─────────────────────
 // The browser must send exactly the returned `headers` with the PUT.
+/** True when `url` is a file we stored under `folder/` (e.g. a student's avatar). */
+const isOwnUploadUrl = (url, folder) =>
+  typeof url === 'string' && url.startsWith(publicUrlFor(`${cfg.uploadPrefix || 'uploads'}/${folder}/`))
+
 const generatePresignedUrl = async ({ key, mimeType, isPublic = true, expiresIn = 900 }) => {
   const cacheControl = 'public, max-age=31536000, immutable' // keys are unique per upload
   const command = new PutObjectCommand({
@@ -113,4 +117,12 @@ const checkStorage = async () => {
   }
 }
 
-export { uploadFile, deleteFile, generatePresignedUrl, publicUrlFor, checkStorage, isConfigured }
+export {
+  uploadFile,
+  deleteFile,
+  generatePresignedUrl,
+  publicUrlFor,
+  checkStorage,
+  isConfigured,
+  isOwnUploadUrl,
+}

@@ -90,6 +90,9 @@ const courseFields = {
   price: Joi.number().min(0).precision(2),
   // List price shown struck-through; must be above `price` to count as a discount
   original_price: Joi.number().min(0).precision(2).allow(null),
+  // India prices in rupees (empty → converted from USD)
+  price_inr: Joi.number().min(0).precision(2).allow(null, ''),
+  original_price_inr: Joi.number().min(0).precision(2).allow(null, ''),
   level: Joi.string().valid(...COURSE_LEVELS),
   language: Joi.string().max(50),
   status: Joi.string().valid(...COURSE_STATUSES),
@@ -288,7 +291,7 @@ const schemas = {
     fileName: Joi.string().required().max(255),
     fileType: Joi.string().required().max(100),
     fileSize: Joi.number().integer().min(1).optional(),
-    kind: Joi.string().valid('image', 'video', 'document').optional(),
+    kind: Joi.string().valid('image', 'video', 'document', 'avatar').optional(),
     isPublic: Joi.boolean().optional().default(true),
   }),
   login: loginSchema,

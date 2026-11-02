@@ -30,6 +30,16 @@ const UPLOAD_RULES = {
       'video/quicktime': ['mov'],
     },
   },
+  // Profile photos — the only kind students may upload (see POST /upload/avatar-url)
+  avatar: {
+    folder: 'avatars',
+    maxSize: 3 * MB,
+    types: {
+      'image/jpeg': ['jpg', 'jpeg'],
+      'image/png': ['png'],
+      'image/webp': ['webp'],
+    },
+  },
   document: {
     folder: 'documents',
     maxSize: 50 * MB,
