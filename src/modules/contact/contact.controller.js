@@ -71,4 +71,14 @@ const updateStatus = async (req, res, next) => {
   }
 }
 
-export { submit, getAll, getById, updateStatus }
+// ── POST /contact/:id/reply — email a reply (admin) ───────────
+const reply = async (req, res, next) => {
+  try {
+    const contact = await service.reply(req.params.id, req.user, req.body ?? {})
+    return success(res, { message: `Reply sent to ${contact.email}`, data: { contact } })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export { reply, submit, getAll, getById, updateStatus }

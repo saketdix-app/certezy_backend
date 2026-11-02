@@ -201,6 +201,24 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    name: 'contact_replies table (admin replies to contact messages)',
+    run: async () => {
+      if (await tableExists('contact_replies')) return false
+      await pool.query(`
+        CREATE TABLE contact_replies (
+          id          INT AUTO_INCREMENT PRIMARY KEY,
+          contact_id  INT NOT NULL,
+          admin_id    INT NULL,
+          message     TEXT NOT NULL,
+          created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_contact_replies_contact (contact_id),
+          FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
     name: 'certificates.training_start / training_end (training period on the certificate)',
     run: async () => {
       const a = await addColumnIfMissing('certificates', 'training_start', 'DATE NULL AFTER issued_at')

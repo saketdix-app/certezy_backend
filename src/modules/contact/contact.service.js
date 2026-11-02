@@ -1,6 +1,7 @@
 // src/modules/contact/contact.service.js
 
 import * as queries from './contact.queries.js'
+import { sendContactReplyJob } from '../../jobs/emailQueue.js'
 
 // ── Submit contact form ────────────────────────────────────────
 const submit = async ({ user_id, name, email, phone, subject, message }) => {
@@ -61,7 +62,39 @@ const getById = async (id) => {
     err.statusCode = 404
     throw err
   }
-  return contact
+  // Older installs may not have the replies table yet — show the message anyway
+  const [replies] = await queries.getReplies(id).catch(() => [[]])
+  return { ...contact, replies }
+}
+
+// ── Reply (admin): email the person and keep the reply on the message ──
+const reply = async (id, admin, { message, resolve = true }) => {
+  const text = String(message ?? '').trim()
+  if (text.length < 2) {
+    const err = new Error('Write a reply first')
+    err.statusCode = 400
+    throw err
+  }
+  if (text.length > 5000) {
+    const err = new Error('Keep the reply under 5,000 characters')
+    err.statusCode = 400
+    throw err
+  }
+  const contact = await getById(id)
+
+  // Queue the email first: if that fails nothing is saved and the admin can retry
+  await sendContactReplyJob({
+    to: contact.email,
+    name: contact.name,
+    subject: contact.subject,
+    originalMessage: contact.message,
+    receivedAt: contact.created_at,
+    reply: text,
+    adminName: admin?.name,
+  })
+  await queries.addReply({ contact_id: contact.id, admin_id: admin?.id, message: text })
+  await queries.updateStatus(contact.id, resolve ? 'resolved' : 'read')
+  return getById(contact.id)
 }
 
 // ── Update status (admin) ──────────────────────────────────────
@@ -77,4 +110,4 @@ const updateStatus = async (id, status) => {
   return await getById(id)
 }
 
-export { submit, getAll, getById, updateStatus }
+export { submit, getAll, getById, updateStatus, reply }
