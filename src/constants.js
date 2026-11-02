@@ -19,6 +19,10 @@ export const TEST_TYPES = ['practice', 'mock', 'diagnostic', 'final']
 export const QUESTION_TYPES = ['single', 'multiple', 'true_false']
 export const DIFFICULTIES = ['easy', 'medium', 'hard']
 
+// Who can use learner features (enroll, buy, learn, take tests, review).
+// Admins and sub-admins can too, so they can try every part of the site.
+export const LEARNER_ROLES = ['student', 'admin', 'sub_admin']
+
 // Enrollment.source values
 export const ENROLLMENT_SOURCES = { PURCHASE: 'purchase', ADMIN: 'admin', FREE: 'free' }
 

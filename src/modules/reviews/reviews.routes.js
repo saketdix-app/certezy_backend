@@ -5,6 +5,7 @@ import Joi from 'joi'
 import * as controller from './reviews.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import { LEARNER_ROLES } from '../../constants.js'
 import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
@@ -35,12 +36,18 @@ router.put(
 router.delete('/:id', authenticate, role('admin'), controller.deleteReview)
 
 // ─── STUDENT ──────────────────────────────────────────────────
-router.post('/', authenticate, role('student'), validate(schemas.createReview), controller.createReview)
-router.get('/course/:courseId/mine', authenticate, role('student'), controller.getMyReview)
+router.post(
+  '/',
+  authenticate,
+  role(...LEARNER_ROLES),
+  validate(schemas.createReview),
+  controller.createReview
+)
+router.get('/course/:courseId/mine', authenticate, role(...LEARNER_ROLES), controller.getMyReview)
 router.put(
   '/course/:courseId/mine',
   authenticate,
-  role('student'),
+  role(...LEARNER_ROLES),
   validate(schemas.updateReview),
   controller.updateMyReview
 )
