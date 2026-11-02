@@ -17,6 +17,13 @@ router.post(
   controller.createDiscountLink
 )
 router.get('/', authenticate, role('admin', 'sub_admin'), controller.getAllDiscounts)
+router.post(
+  '/:id/resend',
+  authenticate,
+  role('admin', 'sub_admin'),
+  permission('can_send_discounts'),
+  controller.resendDiscount
+)
 
 // ─── PUBLIC ───────────────────────────────────────────────────
 // Offer landing page (course + prices + status); using it still needs the

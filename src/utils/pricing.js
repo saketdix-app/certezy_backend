@@ -67,6 +67,10 @@ export const describePricing = (course) => {
 export const resolveChargeAmountInr = (course, discount = null) => {
   const p = describePricing(course)
   if (!discount) return { amount: p.price_inr, original_amount: p.original_price_inr ?? p.price_inr }
+  // Rupee price set by the admin on the link
+  if (discount.discount_price_inr != null && Number(discount.discount_price_inr) > 0) {
+    return { amount: round2(discount.discount_price_inr), original_amount: p.price_inr }
+  }
   const share = Number(discount.discount_price) / Number(p.price || 1)
   return { amount: Math.max(1, Math.round(p.price_inr * share)), original_amount: p.price_inr }
 }

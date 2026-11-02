@@ -201,6 +201,19 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    name: 'discount_links.discount_price_inr (rupee price set by the admin)',
+    run: () =>
+      addColumnIfMissing('discount_links', 'discount_price_inr', 'DECIMAL(10,2) NULL AFTER discount_price'),
+  },
+  {
+    name: 'discount_links.sent_count / last_sent_at (resend tracking)',
+    run: async () => {
+      const a = await addColumnIfMissing('discount_links', 'sent_count', 'INT NOT NULL DEFAULT 1')
+      const b = await addColumnIfMissing('discount_links', 'last_sent_at', 'DATETIME NULL')
+      return a || b
+    },
+  },
+  {
     name: 'users.country (where students sign in from — admin reports)',
     run: async () => {
       if (!(await addColumnIfMissing('users', 'country', 'CHAR(2) NULL AFTER mobile'))) return false
