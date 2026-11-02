@@ -58,4 +58,7 @@ router.get(
   controller.getUserById
 )
 router.put('/users/:id/status', authenticate, role('admin'), controller.updateUserStatus)
+// Delete (recoverable for 30 days) and restore — admins only
+router.delete('/users/:id', authenticate, role('admin'), controller.deleteUser)
+router.post('/users/:id/restore', authenticate, role('admin'), controller.restoreDeletedUser)
 export default router

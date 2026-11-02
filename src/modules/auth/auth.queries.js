@@ -64,10 +64,10 @@ const verifyEmail = async (userId) => {
 }
 
 // ── Get all students (admin) ───────────────────────────────────────────────
-const getAllUsers = ({ limit, offset, role, search }) => {
-  const conditions = []
+// deleted: false (default) → current users; true → deleted, still recoverable
+const userFilter = ({ role, search, deleted, status }) => {
+  const conditions = [deleted ? 'deleted_at IS NOT NULL AND purged_at IS NULL' : 'deleted_at IS NULL']
   const values = []
-
   if (role) {
     conditions.push('role = ?')
     values.push(role)
@@ -76,36 +76,25 @@ const getAllUsers = ({ limit, offset, role, search }) => {
     conditions.push('(name LIKE ? OR email LIKE ?)')
     values.push(`%${search}%`, `%${search}%`)
   }
+  if (status === 'active') conditions.push('is_active = 1')
+  if (status === 'blocked') conditions.push('is_active = 0')
+  return { where: `WHERE ${conditions.join(' AND ')}`, values }
+}
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  values.push(Number(limit), Number(offset))
-
+const getAllUsers = ({ limit, offset, role, search, deleted = false, status }) => {
+  const { where, values } = userFilter({ role, search, deleted, status })
   return pool.query(
-    `SELECT id, name, email, role, mobile, avatar,
-            is_verified, is_active, created_at
+    `SELECT id, name, email, role, mobile, avatar, country,
+            is_verified, is_active, created_at, deleted_at
      FROM users ${where}
-     ORDER BY created_at DESC
+     ORDER BY ${deleted ? 'deleted_at' : 'created_at'} DESC
      LIMIT ? OFFSET ?`,
-    values
+    [...values, Number(limit), Number(offset)]
   )
 }
 
-// ── Count users ────────────────────────────────────────────────────────────
-const countUsers = ({ role, search }) => {
-  const conditions = []
-  const values = []
-
-  if (role) {
-    conditions.push('role = ?')
-    values.push(role)
-  }
-  if (search) {
-    conditions.push('(name LIKE ? OR email LIKE ?)')
-    values.push(`%${search}%`, `%${search}%`)
-  }
-
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-
+const countUsers = ({ role, search, deleted = false, status }) => {
+  const { where, values } = userFilter({ role, search, deleted, status })
   return pool.query(`SELECT COUNT(*) AS total FROM users ${where}`, values)
 }
 

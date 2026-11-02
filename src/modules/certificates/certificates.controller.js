@@ -26,8 +26,8 @@ const adminIssueCertificate = async (req, res, next) => {
 // ── GET /certificates/admin/all — all certificates (admin) ────────────────
 const getAllCertificates = async (req, res, next) => {
   try {
-    const { page, limit } = req.query
-    const result = await service.getAllCertificates({ page, limit })
+    const { page, limit, search } = req.query
+    const result = await service.getAllCertificates({ page, limit, search })
     return success(res, {
       message: 'Certificates fetched',
       data: result.certificates,
@@ -58,4 +58,21 @@ const verifyCertificate = async (req, res, next) => {
   }
 }
 
-export { getMyCertificates, claimCertificate, verifyCertificate, adminIssueCertificate, getAllCertificates }
+// ── DELETE /certificates/:id — revoke (admin) ─────────────────────────────
+const revokeCertificate = async (req, res, next) => {
+  try {
+    const data = await service.revokeCertificate(req.params.id)
+    return success(res, { message: `Certificate ${data.certificate_no} revoked`, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export {
+  getMyCertificates,
+  claimCertificate,
+  verifyCertificate,
+  adminIssueCertificate,
+  getAllCertificates,
+  revokeCertificate,
+}

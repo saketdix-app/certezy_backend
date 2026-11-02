@@ -92,7 +92,7 @@ const hasCertificate = async (user_id, course_id) => {
 }
 
 // ── Core: issue certificate ────────────────────────────────────────────────
-const issueCertificate = async (user_id, course_id) => {
+const issueCertificate = async (user_id, course_id, { issued_at } = {}) => {
   // Already issued check
   const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
   if (existing.length) return existing[0]
@@ -129,6 +129,7 @@ const issueCertificate = async (user_id, course_id) => {
     course_id,
     certificate_no,
     valid_until: null,
+    issued_at,
   })
 
   const [rows] = await queries.getCertificateById(result.insertId)
@@ -227,33 +228,58 @@ const getMyCertificates = async (user_id) => {
 }
 
 // ── Admin — issue certificate manually ────────────────────────────────────
-const adminIssueCertificate = async (admin_id, { user_id, course_id }) => {
+const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode })
+
+// Admin: issue to any student, e.g. classroom batches or corrections.
+// issue_date (YYYY-MM-DD, optional, not in the future) is printed on the PDF.
+const adminIssueCertificate = async (admin_id, { user_id, course_id, issue_date }) => {
+  if (!Number(user_id) || !Number(course_id)) throw httpError(400, 'Choose a student and a course')
   const student = await findById(user_id)
-  if (!student) {
-    const err = new Error('Student not found')
-    err.statusCode = 404
-    throw err
+  if (!student) throw httpError(404, 'Student not found')
+  if (student.role !== 'student') throw httpError(400, 'Certificates can only be issued to student accounts')
+
+  let issued_at
+  if (issue_date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(issue_date)) throw httpError(400, 'Issue date must be a valid date')
+    issued_at = new Date(`${issue_date}T12:00:00Z`)
+    if (Number.isNaN(issued_at.getTime()) || issued_at > new Date(Date.now() + 86400e3)) {
+      throw httpError(400, 'Issue date cannot be in the future')
+    }
   }
 
-  return await issueCertificate(user_id, course_id)
+  const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
+  if (existing.length) {
+    throw httpError(
+      409,
+      `${student.name} already has a certificate for this course (${existing[0].certificate_no})`
+    )
+  }
+  return await issueCertificate(user_id, course_id, { issued_at })
 }
 
 // ── Admin — all certificates ───────────────────────────────────────────────
-const getAllCertificates = async ({ page = 1, limit = 20 } = {}) => {
+const getAllCertificates = async ({ page = 1, limit = 20, search } = {}) => {
+  page = Math.max(1, Number(page) || 1)
+  limit = Math.min(100, Math.max(1, Number(limit) || 20))
   const offset = (page - 1) * limit
+  const q = search ? String(search).slice(0, 100) : ''
 
-  const [rows] = await queries.getAllCertificates({ limit, offset })
-  const [count] = await queries.countCertificates()
+  const [rows] = await queries.getAllCertificates({ limit, offset, search: q })
+  const [count] = await queries.countCertificates(q)
+  const total = Number(count[0].total)
 
   return {
-    certificates: rows,
-    pagination: {
-      total: count[0].total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(count[0].total / limit),
-    },
+    certificates: rows.map((r) => ({ ...r, verify_url: `${env.frontendUrl}/verify/${r.certificate_no}` })),
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
+}
+
+// ── Admin — revoke a certificate ──────────────────────────────────────────
+const revokeCertificate = async (id) => {
+  const [rows] = await queries.getCertificateById(id)
+  if (!rows.length) throw httpError(404, 'Certificate not found')
+  await queries.deleteCertificate(id)
+  return { id: Number(id), certificate_no: rows[0].certificate_no }
 }
 
 export {
@@ -266,4 +292,5 @@ export {
   getMyCertificates,
   adminIssueCertificate,
   getAllCertificates,
+  revokeCertificate,
 }

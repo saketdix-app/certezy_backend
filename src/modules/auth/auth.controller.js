@@ -1,6 +1,7 @@
 // src/modules/auth/auth.controller.js
 
 import * as service from './auth.service.js'
+import { softDeleteUser, restoreUser, RECOVERY_DAYS } from './userDeletion.js'
 import { success } from '../../utils/response.js'
 
 import env from '../../config/env.js'
@@ -108,6 +109,7 @@ const oauthCallback = async (req, res, next) => {
     setCookies(res, result)
     return res.redirect(`${env.frontendUrl}/oauth/callback`)
   } catch (err) {
+    if (err.statusCode === 403) return res.redirect(`${env.frontendUrl}/login?error=account_deleted`)
     next(err)
   }
 }
@@ -130,8 +132,15 @@ const me = async (req, res, next) => {
 // ── GET /auth/users ────────────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
   try {
-    const { page, limit, role, search } = req.query
-    const result = await service.getAllUsers({ page, limit, role, search })
+    const { page, limit, role, search, deleted, status } = req.query
+    const result = await service.getAllUsers({
+      page,
+      limit,
+      role,
+      search,
+      status, // 'active' | 'blocked'
+      deleted: deleted === '1' || deleted === 'true',
+    })
     return success(res, {
       message: 'Users fetched',
       data: result.users,
@@ -152,6 +161,26 @@ const getUserById = async (req, res, next) => {
 }
 
 // ── PUT /auth/users/:id/status ─────────────────────────────────────────────
+// ── DELETE /auth/users/:id — delete (recoverable for 30 days) ─────────────
+const deleteUser = async (req, res, next) => {
+  try {
+    const data = await softDeleteUser(req.params.id, req.user.id)
+    return success(res, { message: `${data.name} deleted — can be restored for ${RECOVERY_DAYS} days`, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── POST /auth/users/:id/restore — undo a delete ──────────────────────────
+const restoreDeletedUser = async (req, res, next) => {
+  try {
+    const data = await restoreUser(req.params.id)
+    return success(res, { message: `${data.name} restored`, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
 const updateUserStatus = async (req, res, next) => {
   try {
     const user = await service.updateUserStatus(req.params.id, req.body.is_active)
@@ -175,4 +204,6 @@ export {
   getAllUsers,
   getUserById,
   updateUserStatus,
+  deleteUser,
+  restoreDeletedUser,
 }

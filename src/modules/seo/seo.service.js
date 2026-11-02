@@ -15,6 +15,8 @@ import { pool } from '../../config/db.js'
 
 const SITE = (process.env.SITE_URL || 'https://certezy.com').replace(/\/+$/, '')
 const BRAND = 'Certezy'
+// Browser tabs and search results start with the brand in capitals
+const TAB = 'CERTEZY'
 const ORG_NAME = 'Certezy E-Learning Pvt. Ltd.'
 const LOGO = `${SITE}/brand/certezy-logo.png`
 const DEFAULT_DESC =
@@ -221,31 +223,31 @@ const courseLinks = (courses) =>
 
 const STATIC_PAGES = {
   '/about': {
-    title: `About ${BRAND} — Project Management Certification Training`,
+    title: `${TAB} | About Us — Project Management Certification Training`,
     description:
       'Certezy E-Learning Pvt. Ltd. (Indore, India) offers online PMP®, CAPM® and project management courses with practice exams and verifiable certificates.',
     heading: `About ${BRAND}`,
     text: 'Certezy E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for project management certifications such as PMP® and CAPM® with video lessons, practice exams that mirror the real test, and certificates of completion that can be verified online.',
   },
   '/contact-us': {
-    title: `Contact ${BRAND} — WhatsApp, Email & Office Address`,
+    title: `${TAB} | Contact Us — WhatsApp, Email & Office Address`,
     description:
       'Contact Certezy E-Learning Pvt. Ltd.: WhatsApp support 24/7 for India and the US, email, and our office at Streamline J-1 Tower, Indore, Madhya Pradesh.',
     heading: 'Contact us',
     text: 'Certezy E-Learning Pvt. Ltd., 3rd Floor, Streamline J-1 Tower, PU-4, Scheme No. 54, Indore, Madhya Pradesh 452010, India. Chat with us on WhatsApp 24/7 or send us a message.',
   },
   '/privacy-policy': {
-    title: `Privacy Policy — ${BRAND}`,
+    title: `${TAB} | Privacy Policy`,
     description: 'How Certezy E-Learning Pvt. Ltd. collects, uses and protects your personal data.',
     heading: 'Privacy Policy',
   },
   '/terms-of-service': {
-    title: `Terms of Service — ${BRAND}`,
+    title: `${TAB} | Terms of Service`,
     description: 'The terms that apply when you use Certezy courses, practice exams and certificates.',
     heading: 'Terms of Service',
   },
   '/verify': {
-    title: `Verify a Certificate — ${BRAND}`,
+    title: `${TAB} | Verify a Certificate`,
     description:
       'Check that a Certezy certificate of completion is genuine by entering its certificate number.',
     heading: 'Verify a certificate',
@@ -269,14 +271,14 @@ export const pageFor = async (rawPath) => {
   const base = { status: 200, canonical, image: LOGO, ld: [], noindex: false }
 
   if (NOINDEX.some((re) => re.test(p))) {
-    return { ...base, title: BRAND, description: DEFAULT_DESC, noindex: true, body: '' }
+    return { ...base, title: TAB, description: DEFAULT_DESC, noindex: true, body: '' }
   }
 
   if (p === '/') {
     const courses = await publishedCourses()
     return {
       ...base,
-      title: `${BRAND} — PMP® & Project Management Certification Training Online`,
+      title: `${TAB} | PMP® & Project Management Certification Training Online`,
       description: DEFAULT_DESC,
       ld: [
         { '@context': 'https://schema.org', ...organization },
@@ -298,7 +300,7 @@ export const pageFor = async (rawPath) => {
     const courses = await publishedCourses()
     return {
       ...base,
-      title: `All Courses — PMP®, CAPM®, Agile & Project Management | ${BRAND}`,
+      title: `${TAB} | All Courses — PMP®, CAPM®, Agile & Project Management`,
       description: `Browse ${courses.length} online courses from Certezy: certification exam prep, practice tests and certificates of completion.`,
       ld: [
         {
@@ -333,7 +335,7 @@ export const pageFor = async (rawPath) => {
       return {
         ...base,
         status: 404,
-        title: `Course not found — ${BRAND}`,
+        title: `${TAB} | Course not found`,
         description: DEFAULT_DESC,
         noindex: true,
         body: '',
@@ -350,7 +352,7 @@ export const pageFor = async (rawPath) => {
     ].filter(Boolean)
     return {
       ...base,
-      title: `${title} | Online Course — ${BRAND}`,
+      title: `${TAB} | ${title}`,
       description: clip(c.short_desc || c.description) || DEFAULT_DESC,
       image: c.thumbnail || LOGO,
       type: 'website',
@@ -400,7 +402,7 @@ export const pageFor = async (rawPath) => {
   return {
     ...base,
     status: 404,
-    title: `Page not found — ${BRAND}`,
+    title: `${TAB} | Page not found`,
     description: DEFAULT_DESC,
     noindex: true,
     body: '',

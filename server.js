@@ -4,6 +4,7 @@ import env from './src/config/env.js'
 import testConnection, { pool } from './src/config/db.js'
 import runMigrations from './src/config/migrate.js'
 import { primeFxRate } from './src/utils/fx.js'
+import { schedulePurge } from './src/modules/auth/userDeletion.js'
 import { connectRedis, client as redisClient } from './src/config/redis.js'
 import './src/jobs/emailWorker.js'
 import app from './src/app.js'
@@ -12,6 +13,7 @@ const start = async () => {
   await testConnection()
   await runMigrations()
   primeFxRate() // USD→INR for India prices (background)
+  schedulePurge() // erase users deleted more than 30 days ago (every 6 h)
   await connectRedis()
 
   const server = app.listen(env.PORT, () => {

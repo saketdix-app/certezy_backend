@@ -3,11 +3,12 @@
 import { pool } from '../../config/db.js'
 
 // ── Create certificate ─────────────────────────────────────────────────────
-const createCertificate = ({ user_id, course_id, certificate_no, valid_until }) =>
+// issued_at: optional date for certificates issued by an admin (default: now)
+const createCertificate = ({ user_id, course_id, certificate_no, valid_until, issued_at }) =>
   pool.query(
-    `INSERT INTO certificates (user_id, course_id, certificate_no, valid_until)
-     VALUES (?, ?, ?, ?)`,
-    [user_id, course_id, certificate_no, valid_until ?? null]
+    `INSERT INTO certificates (user_id, course_id, certificate_no, valid_until, issued_at)
+     VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+    [user_id, course_id, certificate_no, valid_until ?? null, issued_at ?? null]
   )
 
 // ── Get certificate by ID ──────────────────────────────────────────────────
@@ -72,23 +73,49 @@ const getCertificatesByUserId = (user_id) =>
   )
 
 // ── Admin — get all certificates ───────────────────────────────────────────
-const getAllCertificates = ({ limit, offset }) =>
-  pool.query(
+// ?search: student name / email, course title or certificate number
+const certFilter = (search) => {
+  if (!search) return { where: '', values: [] }
+  const like = `%${String(search).trim()}%`
+  return {
+    where: 'WHERE (u.name LIKE ? OR u.email LIKE ? OR c.title LIKE ? OR cert.certificate_no LIKE ?)',
+    values: [like, like, like, like],
+  }
+}
+
+const getAllCertificates = ({ limit, offset, search }) => {
+  const { where, values } = certFilter(search)
+  return pool.query(
     `SELECT
        cert.id, cert.certificate_no, cert.issued_at,
        cert.valid_until, cert.pdf_url,
-       u.name AS student_name, u.email AS student_email,
-       c.title AS course_title
+       u.id AS user_id, u.name AS student_name, u.email AS student_email,
+       c.id AS course_id, c.title AS course_title
      FROM certificates cert
      JOIN users u    ON u.id = cert.user_id
      JOIN courses c  ON c.id = cert.course_id
+     ${where}
      ORDER BY cert.issued_at DESC
      LIMIT ? OFFSET ?`,
-    [Number(limit), Number(offset)]
+    [...values, Number(limit), Number(offset)]
   )
+}
 
-// ── Count all certificates ─────────────────────────────────────────────────
-const countCertificates = () => pool.query(`SELECT COUNT(*) AS total FROM certificates`)
+// ── Count certificates (same search) ──────────────────────────────────────
+const countCertificates = (search) => {
+  const { where, values } = certFilter(search)
+  return pool.query(
+    `SELECT COUNT(*) AS total
+     FROM certificates cert
+     JOIN users u   ON u.id = cert.user_id
+     JOIN courses c ON c.id = cert.course_id
+     ${where}`,
+    values
+  )
+}
+
+// ── Admin — revoke (the number stops verifying) ───────────────────────────
+const deleteCertificate = (id) => pool.query('DELETE FROM certificates WHERE id = ?', [id])
 
 export {
   createCertificate,
@@ -101,4 +128,5 @@ export {
   getFinalTestResults,
   getAllCertificates,
   countCertificates,
+  deleteCertificate,
 }

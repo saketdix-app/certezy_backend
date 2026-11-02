@@ -17,5 +17,6 @@ router.post('/claim/:courseId', authenticate, role('student'), controller.claimC
 // ─── ADMIN ────────────────────────────────────────────────────
 router.post('/issue', authenticate, role('admin', 'sub_admin'), controller.adminIssueCertificate)
 router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllCertificates)
+router.delete('/:id', authenticate, role('admin'), controller.revokeCertificate)
 
 export default router
