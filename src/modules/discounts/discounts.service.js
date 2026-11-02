@@ -5,17 +5,18 @@ import * as queries from './discounts.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { findById, findByEmail } from '../auth/auth.queries.js'
 import env from '../../config/env.js'
-import { resolveChargeAmountInr } from '../../utils/pricing.js'
-
-// Rupee version of a discount link (same share off the course's India price)
-const inrFor = async (course_id, discount_price) => {
-  const [rows] = await courseQueries.getCourseById(course_id)
-  if (!rows.length) return { discount_price_inr: null, original_price_inr: null }
-  const { amount, original_amount } = resolveChargeAmountInr(rows[0], { discount_price })
-  return { discount_price_inr: amount, original_price_inr: original_amount }
-}
+import { describePricing, resolveChargeAmountInr } from '../../utils/pricing.js'
 import { generateUUID } from '../../utils/generate.js'
 import { sendDiscountJob } from '../../jobs/emailQueue.js'
+
+// Rupee version of a discount link: the admin's rupee price, or the same share
+// off the course's India price
+const inrFor = async (discount) => {
+  const [rows] = await courseQueries.getCourseById(discount.course_id)
+  if (!rows.length) return { discount_price_inr: null, original_price_inr: null }
+  const { amount, original_amount } = resolveChargeAmountInr(rows[0], discount)
+  return { discount_price_inr: amount, original_price_inr: original_amount }
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
@@ -34,7 +35,7 @@ const maskEmail = (email = '') => {
 // whoever signs up with that email.
 const createDiscountLink = async (
   created_by,
-  { user_id, email, course_id, discount_price, expiry_hours }
+  { user_id, email, course_id, discount_price, discount_price_inr, expiry_hours }
 ) => {
   // Course exists check
   const [courseRows] = await courseQueries.getCourseById(course_id)
@@ -67,6 +68,16 @@ const createDiscountLink = async (
     throw fail(400, 'Discount price must be less than the course price')
   }
 
+  // Rupee price (optional — without it the USD discount share is applied)
+  const { price_inr: coursePriceInr } = describePricing(course)
+  let discountPriceInr = null
+  if (discount_price_inr != null && discount_price_inr !== '') {
+    discountPriceInr = Math.round(Number(discount_price_inr) * 100) / 100
+    if (!(discountPriceInr >= 1) || discountPriceInr >= coursePriceInr) {
+      throw fail(400, `India price must be between ₹1 and the course's India price (₹${coursePriceInr})`)
+    }
+  }
+
   // Discount percentage calculate karo
   const discount_pct = parseFloat((((price - discountPrice) / price) * 100).toFixed(2))
 
@@ -84,6 +95,7 @@ const createDiscountLink = async (
     course_id,
     original_price: price,
     discount_price: discountPrice,
+    discount_price_inr: discountPriceInr,
     discount_pct,
     created_by,
     expires_at,
@@ -92,6 +104,11 @@ const createDiscountLink = async (
   const to = student?.email ?? targetEmail
   const offer_url = offerUrlFor(token)
 
+  const inr = resolveChargeAmountInr(course, {
+    discount_price: discountPrice,
+    discount_price_inr: discountPriceInr,
+  })
+
   // Email bhejo (background job)
   await sendDiscountJob({
     to,
@@ -99,6 +116,8 @@ const createDiscountLink = async (
     courseTitle: course.title,
     originalPrice: price,
     discountPrice,
+    originalPriceInr: inr.original_amount,
+    discountPriceInr: inr.amount,
     discountPct: discount_pct,
     token,
     offerUrl: offer_url,
@@ -113,6 +132,8 @@ const createDiscountLink = async (
     course_title: course.title,
     original_price: price,
     discount_price: discountPrice,
+    discount_price_inr: inr.amount,
+    original_price_inr: inr.original_amount,
     discount_pct,
     expires_at,
   }
@@ -136,7 +157,7 @@ const getOffer = async (token) => {
     original_price: o.original_price,
     discount_price: o.discount_price,
     discount_pct: o.discount_pct,
-    ...(await inrFor(o.course_id, o.discount_price)),
+    ...(await inrFor(o)),
     expires_at: o.expires_at,
     email_hint: maskEmail(o.email ?? ''),
   }
@@ -170,7 +191,7 @@ const verifyDiscountToken = async (token, user_id) => {
     original_price: discount.original_price,
     discount_price: discount.discount_price,
     discount_pct: discount.discount_pct,
-    ...(await inrFor(discount.course_id, discount.discount_price)),
+    ...(await inrFor(discount)),
     expires_at: discount.expires_at,
   }
 }
@@ -180,26 +201,94 @@ const markDiscountUsed = async (discount_link_id, user_id = null) => {
   await queries.markDiscountUsed(discount_link_id, user_id)
 }
 
-// ── Admin — get all discount links ─────────────────────────────────────────
-const getAllDiscounts = async ({ page = 1, limit = 20 } = {}) => {
-  const offset = (page - 1) * limit
+// ── Admin — sent links, with filters and status counts ───────────────────
+const STATUSES = ['active', 'used', 'expired']
 
-  const [rows] = await queries.getAllDiscounts({ limit, offset })
-  const [count] = await queries.countDiscounts()
+const pickFilters = (q = {}) => {
+  const f = {}
+  if (q.search) f.search = String(q.search).slice(0, 100)
+  if (q.course_id) f.course_id = Number(q.course_id) || undefined
+  if (STATUSES.includes(q.status)) f.status = q.status
+  return f
+}
+
+const getAllDiscounts = async (query = {}) => {
+  const page = Math.max(1, Number(query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number(query.limit) || 20))
+  const filters = pickFilters(query)
+
+  const [rows] = await queries.getAllDiscounts({ limit, offset: (page - 1) * limit, ...filters })
+  const [count] = await queries.countDiscounts(filters)
+  const [[stats]] = await queries.getDiscountStats(filters)
+  const total = Number(count[0].total)
+
+  // Rupee price for links made before admins could set one
+  const discounts = await Promise.all(
+    rows.map(async (d) => ({
+      ...d,
+      is_used: Boolean(d.is_used),
+      is_email_only: Boolean(d.is_email_only),
+      offer_url: offerUrlFor(d.token),
+      ...(await inrFor(d)),
+    }))
+  )
 
   return {
-    discounts: rows,
-    pagination: {
-      total: count[0].total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(count[0].total / limit),
-    },
+    discounts,
+    stats: Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, Number(v) || 0])),
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
+}
+
+// ── Admin — email the same link again (optionally with a new expiry) ──────
+const resendDiscount = async (id, { extend_hours } = {}) => {
+  const [rows] = await queries.getDiscountById(id)
+  const d = rows[0]
+  if (!d) throw fail(404, 'Discount link not found')
+  if (d.is_used) throw fail(409, 'This discount has already been used')
+
+  const hours = Number(extend_hours) || 0
+  const expired = new Date() > new Date(d.expires_at)
+  if (expired && !hours) throw fail(400, 'This link has expired — choose a new expiry to resend it')
+  if (hours && (hours < 1 || hours > 24 * 30)) throw fail(400, 'Expiry must be between 1 hour and 30 days')
+  const expires_at = hours ? new Date(Date.now() + hours * 3600e3) : null
+
+  const [courseRows] = await courseQueries.getCourseById(d.course_id)
+  const course = courseRows[0]
+  if (!course) throw fail(404, 'Course not found')
+  const student = d.user_id ? await findById(d.user_id) : null
+  const to = student?.email ?? d.email
+  if (!to) throw fail(400, 'This link has no email address')
+
+  await queries.markResent(d.id, expires_at)
+
+  const inr = resolveChargeAmountInr(course, d)
+  await sendDiscountJob({
+    to,
+    name: student?.name ?? null,
+    courseTitle: course.title,
+    originalPrice: Number(d.original_price),
+    discountPrice: Number(d.discount_price),
+    originalPriceInr: inr.original_amount,
+    discountPriceInr: inr.amount,
+    discountPct: d.discount_pct,
+    token: d.token,
+    offerUrl: offerUrlFor(d.token),
+    expiresAt: expires_at ?? d.expires_at,
+  })
+
+  return { id: d.id, sent_to: to, offer_url: offerUrlFor(d.token), expires_at: expires_at ?? d.expires_at }
 }
 
 // ── Internal helper — enrollment check ────────────────────────────────────
 const pool_query_check = (user_id, course_id) =>
   pool.query('SELECT id FROM enrollments WHERE user_id = ? AND course_id = ? LIMIT 1', [user_id, course_id])
 
-export { createDiscountLink, getOffer, verifyDiscountToken, markDiscountUsed, getAllDiscounts }
+export {
+  createDiscountLink,
+  getOffer,
+  verifyDiscountToken,
+  markDiscountUsed,
+  getAllDiscounts,
+  resendDiscount,
+}

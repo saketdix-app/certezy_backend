@@ -33,14 +33,13 @@ const verifyDiscountToken = async (req, res, next) => {
   }
 }
 
-// ── GET /discounts — all discount links (admin) ────────────────────────────
+// ── GET /discounts — sent links (admin) ?search &status &course_id &page ──
 const getAllDiscounts = async (req, res, next) => {
   try {
-    const { page, limit } = req.query
-    const result = await service.getAllDiscounts({ page, limit })
+    const result = await service.getAllDiscounts(req.query)
     return success(res, {
       message: 'Discount links fetched',
-      data: result.discounts,
+      data: { discounts: result.discounts, stats: result.stats },
       pagination: result.pagination,
     })
   } catch (err) {
@@ -48,4 +47,14 @@ const getAllDiscounts = async (req, res, next) => {
   }
 }
 
-export { createDiscountLink, verifyDiscountToken, getAllDiscounts, getOffer }
+// ── POST /discounts/:id/resend — email the same link again (admin) ────────
+const resendDiscount = async (req, res, next) => {
+  try {
+    const data = await service.resendDiscount(req.params.id, req.body ?? {})
+    return success(res, { message: `Offer sent again to ${data.sent_to}`, data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export { createDiscountLink, verifyDiscountToken, getAllDiscounts, getOffer, resendDiscount }

@@ -46,10 +46,23 @@ const sendWelcomeMail = (to, name) => {
   })
 }
 
+const inr = (n) => Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+
 // 2. Discount link mail — admin bhejega (registered student or any email)
 const sendDiscountMail = (
   to,
-  { name, courseTitle, originalPrice, discountPrice, discountPct, token, offerUrl, expiresAt }
+  {
+    name,
+    courseTitle,
+    originalPrice,
+    discountPrice,
+    originalPriceInr,
+    discountPriceInr,
+    discountPct,
+    token,
+    offerUrl,
+    expiresAt,
+  }
 ) => {
   const link = offerUrl || `${env.frontendUrl}/offer/${token}`
   const pct = discountPct ? `${Math.round(discountPct)}% off` : 'Special price'
@@ -69,6 +82,13 @@ const sendDiscountMail = (
             &nbsp;<span style="font-size:22px;font-weight:bold;color:#2563eb">$${discountPrice}</span>
             &nbsp;<span style="color:#16a34a;font-weight:bold">${pct}</span>
           </p>
+          ${
+            discountPriceInr != null
+              ? `<p style="margin:-8px 0 16px;font-size:14px;color:#334155">In India:
+                 <span style="text-decoration:line-through;color:#94a3b8">₹${inr(originalPriceInr)}</span>
+                 &nbsp;<b style="color:#2563eb">₹${inr(discountPriceInr)}</b></p>`
+              : ''
+          }
           <a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">Claim offer &amp; pay</a>
           <p style="margin:18px 0 0;font-size:13px;color:#64748b">
             Valid until ${new Date(expiresAt).toUTCString()}. Sign in or create your account with
