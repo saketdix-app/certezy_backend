@@ -4,11 +4,37 @@ import { pool } from '../../config/db.js'
 
 // ── Create certificate ─────────────────────────────────────────────────────
 // issued_at: optional date for certificates issued by an admin (default: now)
-const createCertificate = ({ user_id, course_id, certificate_no, valid_until, issued_at }) =>
+const createCertificate = ({
+  user_id,
+  course_id,
+  certificate_no,
+  valid_until,
+  issued_at,
+  training_start,
+  training_end,
+}) =>
   pool.query(
-    `INSERT INTO certificates (user_id, course_id, certificate_no, valid_until, issued_at)
-     VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
-    [user_id, course_id, certificate_no, valid_until ?? null, issued_at ?? null]
+    `INSERT INTO certificates
+       (user_id, course_id, certificate_no, valid_until, issued_at, training_start, training_end)
+     VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?)`,
+    [
+      user_id,
+      course_id,
+      certificate_no,
+      valid_until ?? null,
+      issued_at ?? null,
+      training_start ?? null,
+      training_end ?? null,
+    ]
+  )
+
+// ── Admin regenerate: new dates on the same certificate (number unchanged) ─
+const updateCertificateDates = (id, { issued_at, training_start, training_end }) =>
+  pool.query(
+    `UPDATE certificates
+     SET issued_at = COALESCE(?, CURRENT_TIMESTAMP), training_start = ?, training_end = ?
+     WHERE id = ?`,
+    [issued_at ?? null, training_start ?? null, training_end ?? null, id]
   )
 
 // ── Get certificate by ID ──────────────────────────────────────────────────
@@ -35,6 +61,7 @@ const getCertificateForVerify = (certificate_no) =>
   pool.query(
     `SELECT
        cert.certificate_no, cert.course_id, cert.issued_at, cert.valid_until, cert.pdf_url,
+       cert.training_start, cert.training_end,
        u.name AS student_name,
        c.title AS course_title, c.slug AS course_slug
      FROM certificates cert
@@ -62,7 +89,7 @@ const getCertificatesByUserId = (user_id) =>
   pool.query(
     `SELECT
        cert.id, cert.course_id, cert.certificate_no, cert.issued_at,
-       cert.valid_until, cert.pdf_url,
+       cert.valid_until, cert.pdf_url, cert.training_start, cert.training_end,
        c.title AS course_title, c.slug AS course_slug,
        c.thumbnail AS course_thumbnail
      FROM certificates cert
@@ -88,7 +115,7 @@ const getAllCertificates = ({ limit, offset, search }) => {
   return pool.query(
     `SELECT
        cert.id, cert.certificate_no, cert.issued_at,
-       cert.valid_until, cert.pdf_url,
+       cert.valid_until, cert.pdf_url, cert.training_start, cert.training_end,
        u.id AS user_id, u.name AS student_name, u.email AS student_email,
        c.id AS course_id, c.title AS course_title
      FROM certificates cert
@@ -123,6 +150,7 @@ export {
   getCertificateByUserAndCourse,
   updatePdfUrl,
   touchIssuedAt,
+  updateCertificateDates,
   getCertificatesByUserId,
   getCertificateForVerify,
   getFinalTestResults,

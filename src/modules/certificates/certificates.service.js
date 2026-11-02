@@ -11,6 +11,9 @@ import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { renderCertificatePdf, formatCertificateName, ISSUER } from './certificate.pdf.js'
 import { contactHoursFor, pduIdFor } from './contactHours.js'
 
+// 'YYYY-MM-DD' (UTC) for a date column
+const toDay = (d) => new Date(d).toISOString().slice(0, 10)
+
 const verifyUrlFor = (certificate_no) => `${env.frontendUrl}/verify/${certificate_no}`
 
 // ── Generate Certificate PDF + Upload ─────────────────────────────────────
@@ -21,6 +24,8 @@ const generateCertPDF = async ({
   courseTitle,
   issuedAt,
   totalLessons,
+  trainingStart,
+  trainingEnd,
 }) => {
   const contactHours = contactHoursFor(courseId)
   const buffer = await renderCertificatePdf({
@@ -32,6 +37,8 @@ const generateCertPDF = async ({
     durationLabel: totalLessons ? `${totalLessons} lessons` : undefined,
     contactHours,
     pduId: contactHours ? pduIdFor(certificate_no) : undefined,
+    trainingStart,
+    trainingEnd,
   })
   const key = `certificates/${certificate_no}.pdf`
   const url = await uploadFile({ buffer, key, mimeType: 'application/pdf', isPublic: true })
@@ -49,6 +56,8 @@ const attachPdf = async (cert, { student, course }) => {
     courseTitle: course.title,
     issuedAt: cert.issued_at || new Date(),
     totalLessons: metaRows[0]?.total_lessons,
+    trainingStart: cert.training_start,
+    trainingEnd: cert.training_end,
   })
   await queries.updatePdfUrl(cert.id, url)
   return { ...cert, pdf_url: url }
@@ -57,6 +66,18 @@ const attachPdf = async (cert, { student, course }) => {
 // ── Reissue: same certificate number, today's date, fresh PDF ─────────────
 const reissueCertificate = async (cert) => {
   await queries.touchIssuedAt(cert.id)
+  // Older certificates had no training period: enrollment day → today
+  if (!cert.training_start) {
+    const enrollment = await checkEnrollment(cert.user_id, cert.course_id)
+    if (enrollment?.enrolled_at) {
+      const [now] = await queries.getCertificateById(cert.id)
+      await queries.updateCertificateDates(cert.id, {
+        issued_at: now[0].issued_at,
+        training_start: toDay(enrollment.enrolled_at),
+        training_end: toDay(new Date()),
+      })
+    }
+  }
   const [rows] = await queries.getCertificateById(cert.id)
   const [courseRows] = await courseQueries.getCourseById(cert.course_id)
   const student = await findById(cert.user_id)
@@ -92,7 +113,7 @@ const hasCertificate = async (user_id, course_id) => {
 }
 
 // ── Core: issue certificate ────────────────────────────────────────────────
-const issueCertificate = async (user_id, course_id, { issued_at } = {}) => {
+const issueCertificate = async (user_id, course_id, { issued_at, training_start, training_end } = {}) => {
   // Already issued check
   const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
   if (existing.length) return existing[0]
@@ -123,6 +144,11 @@ const issueCertificate = async (user_id, course_id, { issued_at } = {}) => {
   // Certificate number generate karo
   const certificate_no = generateCertNumber()
 
+  // Training period: given by an admin, otherwise enrollment day → completion day
+  const enrollment = training_start ? null : await checkEnrollment(user_id, course_id)
+  const start = training_start ?? (enrollment?.enrolled_at ? toDay(enrollment.enrolled_at) : null)
+  const end = training_end ?? toDay(issued_at ?? new Date())
+
   // DB mein save karo
   const [result] = await queries.createCertificate({
     user_id,
@@ -130,6 +156,8 @@ const issueCertificate = async (user_id, course_id, { issued_at } = {}) => {
     certificate_no,
     valid_until: null,
     issued_at,
+    training_start: start,
+    training_end: start ? end : null,
   })
 
   const [rows] = await queries.getCertificateById(result.insertId)
@@ -211,6 +239,8 @@ const verifyCertificate = async (certificate_no) => {
     course_title: c.course_title,
     course_slug: c.course_slug,
     issued_at: c.issued_at,
+    training_start: c.training_start,
+    training_end: c.training_end,
     valid_until: c.valid_until,
     pdf_url: c.pdf_url,
     issuer: ISSUER,
@@ -230,31 +260,86 @@ const getMyCertificates = async (user_id) => {
 // ── Admin — issue certificate manually ────────────────────────────────────
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Checks the admin's dates (all 'YYYY-MM-DD'): training start ≤ end, nothing
+ * in the future, issue date not before the training ended.
+ */
+const parseAdminDates = ({ issue_date, training_start, training_end }) => {
+  const day = (v, label) => {
+    if (v == null || v === '') return null
+    if (!DAY_RE.test(v) || Number.isNaN(new Date(`${v}T00:00:00Z`).getTime())) {
+      throw httpError(400, `${label} must be a valid date`)
+    }
+    return v
+  }
+  const issue = day(issue_date, 'Issue date')
+  const start = day(training_start, 'Training start date')
+  const end = day(training_end, 'Training end date')
+  const today = toDay(new Date(Date.now() + 14 * 3600e3)) // allow for time zones ahead of UTC
+
+  if (Boolean(start) !== Boolean(end)) throw httpError(400, 'Enter both the training start and end dates')
+  if (start && start > end) throw httpError(400, 'Training start date must be on or before the end date')
+  for (const [v, label] of [
+    [issue, 'Issue date'],
+    [end, 'Training end date'],
+  ]) {
+    if (v && v > today) throw httpError(400, `${label} cannot be in the future`)
+  }
+  if (issue && end && issue < end) throw httpError(400, 'Issue date cannot be before the training end date')
+
+  return {
+    issued_at: issue ? new Date(`${issue}T12:00:00Z`) : undefined,
+    training_start: start,
+    training_end: end,
+  }
+}
+
 // Admin: issue to any student, e.g. classroom batches or corrections.
-// issue_date (YYYY-MM-DD, optional, not in the future) is printed on the PDF.
-const adminIssueCertificate = async (admin_id, { user_id, course_id, issue_date }) => {
+// Dates (YYYY-MM-DD, optional) are printed on the PDF. replace: true
+// overwrites the student's existing certificate for the course instead of
+// refusing — same certificate number, new dates and PDF.
+const adminIssueCertificate = async (
+  admin_id,
+  { user_id, course_id, issue_date, training_start, training_end, replace }
+) => {
   if (!Number(user_id) || !Number(course_id)) throw httpError(400, 'Choose a student and a course')
   const student = await findById(user_id)
   if (!student) throw httpError(404, 'Student not found')
   if (student.role !== 'student') throw httpError(400, 'Certificates can only be issued to student accounts')
-
-  let issued_at
-  if (issue_date) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(issue_date)) throw httpError(400, 'Issue date must be a valid date')
-    issued_at = new Date(`${issue_date}T12:00:00Z`)
-    if (Number.isNaN(issued_at.getTime()) || issued_at > new Date(Date.now() + 86400e3)) {
-      throw httpError(400, 'Issue date cannot be in the future')
-    }
-  }
+  const dates = parseAdminDates({ issue_date, training_start, training_end })
 
   const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
   if (existing.length) {
+    if (replace) return regenerateCertificate(existing[0].id, { issue_date, training_start, training_end })
     throw httpError(
       409,
-      `${student.name} already has a certificate for this course (${existing[0].certificate_no})`
+      `${student.name} already has a certificate for this course (${existing[0].certificate_no}). Choose "Replace existing certificate" to overwrite it.`
     )
   }
-  return await issueCertificate(user_id, course_id, { issued_at })
+  return await issueCertificate(user_id, course_id, dates)
+}
+
+// ── Admin — regenerate (overwrite) a certificate with corrected dates ─────
+// Keeps the certificate number, so links already shared keep verifying.
+const regenerateCertificate = async (id, { issue_date, training_start, training_end } = {}) => {
+  const [rows] = await queries.getCertificateById(id)
+  const cert = rows[0]
+  if (!cert) throw httpError(404, 'Certificate not found')
+  const dates = parseAdminDates({ issue_date, training_start, training_end })
+
+  await queries.updateCertificateDates(cert.id, dates)
+  const [fresh] = await queries.getCertificateById(cert.id)
+  const [courseRows] = await courseQueries.getCourseById(cert.course_id)
+  const student = await findById(cert.user_id)
+  if (!courseRows.length || !student) throw httpError(404, 'Course or student not found')
+
+  const updated = await attachPdf(fresh[0], { student, course: courseRows[0] })
+  // Same S3 key is overwritten — a version query makes browsers fetch the new file
+  const pdf_url = `${updated.pdf_url.split('?')[0]}?v=${Date.now()}`
+  await queries.updatePdfUrl(cert.id, pdf_url)
+  return { ...updated, pdf_url, regenerated: true }
 }
 
 // ── Admin — all certificates ───────────────────────────────────────────────
@@ -293,4 +378,5 @@ export {
   adminIssueCertificate,
   getAllCertificates,
   revokeCertificate,
+  regenerateCertificate,
 }
