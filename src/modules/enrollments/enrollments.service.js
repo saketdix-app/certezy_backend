@@ -77,23 +77,104 @@ const updateProgress = async (user_id, course_id, progress) => {
 }
 
 // ── Admin — get all enrollments ────────────────────────────────────────────
-const getAllEnrollments = async ({ page = 1, limit = 20, course_id, user_id } = {}) => {
-  const offset = (page - 1) * limit
+const ADMIN_FILTERS = ['course_id', 'user_id', 'search', 'country', 'status', 'source', 'from', 'to']
+const STATUSES = ['completed', 'in_progress', 'not_started', 'inactive']
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-  const [rows] = await queries.getAllEnrollments({ limit, offset, course_id, user_id })
-  const [count] = await queries.countEnrollments({ course_id, user_id })
+/** Only known filters, with values checked (anything else is dropped). */
+const pickFilters = (query = {}) => {
+  const f = {}
+  for (const key of ADMIN_FILTERS) {
+    const v = query[key]
+    if (v == null || v === '') continue
+    f[key] = String(v).slice(0, 100)
+  }
+  if (f.status && !STATUSES.includes(f.status)) delete f.status
+  if (f.country && !/^([A-Za-z]{2}|unknown)$/.test(f.country)) delete f.country
+  for (const k of ['from', 'to']) if (f[k] && !DATE_RE.test(f[k])) delete f[k]
+  return f
+}
 
-  const total = count[0].total
+// MySQL returns SUM()/AVG() as strings — numbers for the client
+const toNumbers = (row) =>
+  Object.fromEntries(
+    Object.entries(row).map(([k, v]) => [k, ['country', 'course_title'].includes(k) ? v : Number(v) || 0])
+  )
+
+const getAllEnrollments = async (query = {}) => {
+  const page = Math.max(1, Number(query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number(query.limit) || 20))
+  const filters = pickFilters(query)
+
+  const [rows] = await queries.getAllEnrollments({ limit, offset: (page - 1) * limit, ...filters })
+  const [count] = await queries.countEnrollments(filters)
+  const total = Number(count[0].total)
 
   return {
-    enrollments: rows,
-    pagination: {
-      total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(total / limit),
-    },
+    enrollments: rows.map((r) => ({ ...r, is_inactive: !!Number(r.is_inactive) })),
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
+}
+
+const getEnrollmentStats = async (query = {}) => {
+  const stats = await queries.getEnrollmentStats(pickFilters(query))
+  return {
+    ...stats,
+    totals: toNumbers(stats.totals),
+    by_country: stats.by_country.map(toNumbers),
+    by_course: stats.by_course.map(toNumbers),
+  }
+}
+
+// ── Admin — CSV of every enrollment matching the filters ──────────────────
+const STATUS_LABELS = { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' }
+
+const csvCell = (v) => {
+  if (v == null) return ''
+  let s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v)
+  // stop spreadsheets from running cell text as a formula
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+const exportEnrollmentsCsv = async (query = {}) => {
+  const [rows] = await queries.getAllEnrollments({ limit: null, ...pickFilters(query) })
+  const header = [
+    'Student',
+    'Email',
+    'Mobile',
+    'Country',
+    'Course',
+    'Enrolled on',
+    'Source',
+    'Progress %',
+    'Status',
+    'Inactive 14+ days',
+    'Last activity',
+    'Completed on',
+    'Payment ID',
+  ]
+  const lines = rows.map((r) =>
+    [
+      r.student_name,
+      r.student_email,
+      r.student_mobile,
+      r.student_country,
+      r.course_title,
+      r.enrolled_at,
+      r.source,
+      r.progress,
+      STATUS_LABELS[r.status] ?? r.status,
+      Number(r.is_inactive) ? 'Yes' : 'No',
+      r.last_activity,
+      r.completed_at,
+      r.payment_id,
+    ]
+      .map(csvCell)
+      .join(',')
+  )
+  // BOM so Excel opens UTF-8 names correctly
+  return '\uFEFF' + [header.join(','), ...lines].join('\r\n')
 }
 
 // ── Admin — assign courses free of cost (₹0, no payment) ──────────────────
@@ -189,6 +270,8 @@ export {
   enrollFree,
   updateProgress,
   getAllEnrollments,
+  getEnrollmentStats,
+  exportEnrollmentsCsv,
   assignCourses,
   getUserEnrollments,
   revokeEnrollment,

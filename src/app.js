@@ -31,6 +31,7 @@ import adminRoutes from './modules/admin/admin.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
 import importRoutes from './modules/imports/imports.routes.js'
+import seoRoutes from './modules/seo/seo.routes.js'
 
 const API_PREFIX = '/api/v1'
 
@@ -62,6 +63,9 @@ const app = express()
 // Behind nginx / a load balancer: needed for correct client IPs (rate limiting)
 // and secure cookies.
 app.set('trust proxy', 1)
+
+// ─── SEO: page HTML, sitemap, robots (before helmet; not JSON) ──
+app.use(seoRoutes)
 
 // ─── SECURITY ────────────────────────────────────────────────
 app.use(helmet())

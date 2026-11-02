@@ -200,6 +200,35 @@ const STEPS = [
     run: () =>
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
+  {
+    name: 'users.country (where students sign in from — admin reports)',
+    run: async () => {
+      if (!(await addColumnIfMissing('users', 'country', 'CHAR(2) NULL AFTER mobile'))) return false
+      await pool.query('CREATE INDEX idx_users_country ON users (country)')
+      // First guess for existing students; the next sign-in fills the rest from their IP
+      await pool.query(
+        `UPDATE users u SET u.country = 'IN'
+         WHERE u.country IS NULL
+           AND (u.mobile LIKE '+91%'
+             OR EXISTS (SELECT 1 FROM payments p
+                        WHERE p.user_id = u.id AND p.status = 'success' AND p.currency = 'INR'))`
+      )
+      const prefixes = [
+        ['+971', 'AE'],
+        ['+61', 'AU'],
+        ['+44', 'GB'],
+        ['+65', 'SG'],
+        ['+1', 'US'],
+      ]
+      for (const [prefix, cc] of prefixes) {
+        await pool.query(`UPDATE users SET country = ? WHERE country IS NULL AND mobile LIKE ?`, [
+          cc,
+          `${prefix}%`,
+        ])
+      }
+      return true
+    },
+  },
 ]
 
 /**

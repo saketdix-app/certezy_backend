@@ -2,6 +2,7 @@
 
 import tokenUtil from '../utils/token.js'
 import * as queries from '../modules/auth/auth.queries.js'
+import { rememberCountry } from '../utils/geo.js'
 
 const authenticate = async (req, res, next) => {
   try {
@@ -32,6 +33,7 @@ const authenticate = async (req, res, next) => {
     }
 
     req.user = user
+    rememberCountry(req, user.id)
     next()
   } catch (err) {
     next(err)

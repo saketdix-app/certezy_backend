@@ -40,16 +40,41 @@ const enrollFree = async (req, res, next) => {
   }
 }
 
-// ── GET /admin/enrollments — all enrollments (admin) ──────────────────────
+// ── GET /enrollments/admin/all — all enrollments (admin, with filters) ────
+// ?search &course_id &country &status (completed|in_progress|not_started|inactive)
+// &source &from &to (YYYY-MM-DD) &page &limit
 const getAllEnrollments = async (req, res, next) => {
   try {
-    const { page, limit, course_id, user_id } = req.query
-    const result = await service.getAllEnrollments({ page, limit, course_id, user_id })
+    const result = await service.getAllEnrollments(req.query)
     return success(res, {
       message: 'Enrollments fetched',
       data: result.enrollments,
       pagination: result.pagination,
     })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /enrollments/admin/stats — status / country / course totals ───────
+const getEnrollmentStats = async (req, res, next) => {
+  try {
+    const data = await service.getEnrollmentStats(req.query)
+    return success(res, { message: 'Enrollment stats fetched', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// ── GET /enrollments/admin/export — CSV download (same filters) ───────────
+const exportEnrollments = async (req, res, next) => {
+  try {
+    const csv = await service.exportEnrollmentsCsv(req.query)
+    const date = new Date().toISOString().slice(0, 10)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="enrollments-${date}.csv"`)
+    res.setHeader('Cache-Control', 'no-store')
+    return res.send(csv)
   } catch (err) {
     next(err)
   }
@@ -108,6 +133,8 @@ export {
   getMyEnrollments,
   checkEnrollment,
   getAllEnrollments,
+  getEnrollmentStats,
+  exportEnrollments,
   assignCourses,
   getUserEnrollments,
   revokeEnrollment,

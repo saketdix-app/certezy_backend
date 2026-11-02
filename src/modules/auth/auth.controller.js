@@ -82,7 +82,7 @@ const changePassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body
     await service.changePassword({ userId: req.user.id, currentPassword, newPassword })
     clearCookies(res)
-    return success(res, { message: 'Password changed successfully. Please login again.' })
+    return success(res, { message: 'Password changed successfully. Please sign in again.' })
   } catch (err) {
     next(err)
   }
