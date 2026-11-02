@@ -58,6 +58,19 @@ const verifyCertificate = async (req, res, next) => {
   }
 }
 
+// ── PUT /certificates/:id — regenerate with new dates (admin) ─────────────
+const regenerateCertificate = async (req, res, next) => {
+  try {
+    const certificate = await service.regenerateCertificate(req.params.id, req.body ?? {})
+    return success(res, {
+      message: `Certificate ${certificate.certificate_no} regenerated`,
+      data: { certificate },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ── DELETE /certificates/:id — revoke (admin) ─────────────────────────────
 const revokeCertificate = async (req, res, next) => {
   try {
@@ -75,4 +88,5 @@ export {
   adminIssueCertificate,
   getAllCertificates,
   revokeCertificate,
+  regenerateCertificate,
 }

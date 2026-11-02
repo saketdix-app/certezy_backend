@@ -35,6 +35,10 @@ export const formatCertificateName = (name = '') =>
 const formatDate = (d) =>
   new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
+// Calendar dates (training period) are stored as dates, read back as UTC midnight
+const formatDay = (d) =>
+  new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+
 // Text centred in a box, shrinking the font until it fits on one line
 const fitText = (doc, text, { x, y, width, font, size, min = 12, color, characterSpacing = 0 }) => {
   doc.font(font)
@@ -88,7 +92,8 @@ const seal = (doc, cx, cy) => {
 /**
  * @param {{ certificateNo: string, studentName: string, courseTitle: string,
  *           issuedAt: Date|string, verifyUrl?: string, durationLabel?: string,
- *           contactHours?: { hours: number, subject: string }, pduId?: string }} data
+ *           contactHours?: { hours: number, subject: string }, pduId?: string,
+ *           trainingStart?: Date|string, trainingEnd?: Date|string }} data
  * @returns {Promise<Buffer>}
  */
 export const renderCertificatePdf = ({
@@ -100,6 +105,8 @@ export const renderCertificatePdf = ({
   durationLabel,
   contactHours,
   pduId,
+  trainingStart,
+  trainingEnd,
 }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -183,15 +190,15 @@ export const renderCertificatePdf = ({
       .stroke(GOLD)
 
     doc.fillColor(MUTED).font('Times-Italic').fontSize(15)
-    doc.text('has successfully completed the online course', 0, 310, { width: W, align: 'center' })
+    doc.text('has successfully completed the online course', 0, 303, { width: W, align: 'center' })
 
     doc.font('Helvetica-Bold').fillColor(INK)
     const titleSize = doc.fontSize(21).widthOfString(courseTitle) > W - 220 ? 17 : 21
     doc.fontSize(titleSize)
     const titleH = Math.min(50, doc.heightOfString(courseTitle, { width: W - 220 }))
-    doc.text(courseTitle, 110, 336, { width: W - 220, align: 'center', height: 50, ellipsis: true })
+    doc.text(courseTitle, 110, 327, { width: W - 220, align: 'center', height: 50, ellipsis: true })
 
-    let y = 336 + titleH + 10
+    let y = 327 + titleH + 9
 
     // Contact-hour courses (PMP): highlighted training-hours line
     if (contactHours) {
@@ -200,12 +207,20 @@ export const renderCertificatePdf = ({
       const w = doc.widthOfString(label, { characterSpacing: 0.4 }) + 36
       doc.roundedRect(cx - w / 2, y - 2, w, 22, 11).fill('#F6EED8')
       doc.fillColor('#7A5A12').text(label, 0, y + 3.5, { width: W, align: 'center', characterSpacing: 0.4 })
-      y += 30
+      y += 28
     }
 
-    const sub = [durationLabel, `offered by ${ISSUER}`].filter(Boolean).join('  ·  ')
-    doc.fillColor(MUTED).font('Helvetica').fontSize(10.5)
-    doc.text(sub, 0, y, { width: W, align: 'center' })
+    // Training period (PMI asks for the course dates with contact hours).
+    // It takes the place of the "offered by" line — the issuer signs below.
+    if (trainingStart && trainingEnd) {
+      const period = `Training period: ${formatDay(trainingStart)} – ${formatDay(trainingEnd)}`
+      doc.fillColor(INK).font('Helvetica-Bold').fontSize(11)
+      doc.text([period, durationLabel].filter(Boolean).join('   ·   '), 0, y, { width: W, align: 'center' })
+    } else {
+      const sub = [durationLabel, `offered by ${ISSUER}`].filter(Boolean).join('  ·  ')
+      doc.fillColor(MUTED).font('Helvetica').fontSize(10.5)
+      doc.text(sub, 0, y, { width: W, align: 'center' })
+    }
 
     // ── Footer: date · seal · signatory ──────────────────────────────
     const footY = 452

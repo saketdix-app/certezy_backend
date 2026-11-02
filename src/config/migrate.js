@@ -201,6 +201,14 @@ const STEPS = [
       addColumnIfMissing('reviews', 'updated_at', 'TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP'),
   },
   {
+    name: 'certificates.training_start / training_end (training period on the certificate)',
+    run: async () => {
+      const a = await addColumnIfMissing('certificates', 'training_start', 'DATE NULL AFTER issued_at')
+      const b = await addColumnIfMissing('certificates', 'training_end', 'DATE NULL AFTER training_start')
+      return a || b
+    },
+  },
+  {
     name: 'courses.inr_enabled (sell in rupees to India; off = USD for everyone)',
     run: () =>
       addColumnIfMissing('courses', 'inr_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER original_price_inr'),
