@@ -1,6 +1,8 @@
 // src/modules/auth/passwordReset.js
 // "Forgot password" flow:
 //   1. requestPasswordReset(email) — emails a one-time link, valid for 1 hour.
+//      Google/GitHub accounts use the same link to set a password, so they can
+//      sign in either way afterwards.
 //      Always answers the same way, so nobody can find out which emails have
 //      an account.
 //   2. resetPassword(token, password) — sets the new password, uses up the
@@ -28,13 +30,6 @@ export const requestPasswordReset = async (rawEmail) => {
   // Unknown, deactivated or deleted accounts get no email (and the same answer)
   if (!user || !user.is_active || user.deleted_at) return
 
-  // Accounts that sign in with Google/GitHub have no password to reset
-  const social = user.oauth_provider && user.oauth_provider !== 'local' && !user.password
-  if (social) {
-    await sendPasswordResetJob({ to: user.email, name: user.name, provider: user.oauth_provider })
-    return
-  }
-
   const token = crypto.randomBytes(32).toString('hex')
   // One live link at a time: older unused links stop working
   await pool.query(
@@ -51,6 +46,8 @@ export const requestPasswordReset = async (rawEmail) => {
     name: user.name,
     resetUrl: `${env.frontendUrl}/reset-password?token=${token}`,
     minutes: TOKEN_TTL_MINUTES,
+    // Google/GitHub accounts without a password are setting one, not resetting
+    provider: user.password ? undefined : user.oauth_provider,
   })
 }
 
