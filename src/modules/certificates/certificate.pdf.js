@@ -107,6 +107,7 @@ export const renderCertificatePdf = ({
   pduId,
   trainingStart,
   trainingEnd,
+  dateLabel = 'DATE OF ISSUE',
 }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -236,7 +237,7 @@ export const renderCertificatePdf = ({
       .lineWidth(0.7)
       .stroke(MUTED)
     doc.fillColor(MUTED).font('Helvetica').fontSize(9.5)
-    doc.text('DATE OF ISSUE', leftX, footY + 30, { width: colW, align: 'center', characterSpacing: 1.2 })
+    doc.text(dateLabel, leftX, footY + 30, { width: colW, align: 'center', characterSpacing: 1.2 })
 
     seal(doc, cx, footY + 18)
 
