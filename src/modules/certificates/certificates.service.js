@@ -179,22 +179,37 @@ const issueCertificate = async (user_id, course_id, { issued_at, training_start,
 
 // ── Has the student finished the course? ──────────────────────────────────
 // All lessons completed (progress 100%) and every active final test passed.
+const requiredExams = async (user_id, course_id) => {
+  const [rows] = await queries.getRequiredTestResults(user_id, course_id)
+  return rows.map((t) => ({ id: t.id, title: t.title, passed: Boolean(Number(t.passed)) }))
+}
+
+// All lessons completed and every course exam passed
 const getCompletionStatus = async (user_id, course_id) => {
   const enrollment = await checkEnrollment(user_id, course_id)
   if (!enrollment) return { enrolled: false, complete: false, reason: 'You are not enrolled in this course' }
   if ((enrollment.progress ?? 0) < 100) {
-    return { enrolled: true, complete: false, reason: 'Complete all lessons to earn your certificate' }
-  }
-  const [required] = await queries.getRequiredTestResults(user_id, course_id)
-  const notPassed = required.filter((t) => !Number(t.passed))
-  if (notPassed.length) {
     return {
       enrolled: true,
       complete: false,
-      reason: `Pass ${notPassed.length > 1 ? 'the course quizzes' : `"${notPassed[0].title}"`} to earn your certificate`,
+      exams: await requiredExams(user_id, course_id),
+      reason: 'Complete all lessons to earn your certificate',
     }
   }
-  return { enrolled: true, complete: true }
+  const exams = await requiredExams(user_id, course_id)
+  const left = exams.filter((t) => !t.passed)
+  if (left.length) {
+    return {
+      enrolled: true,
+      complete: false,
+      exams,
+      reason:
+        left.length === 1
+          ? `Pass "${left[0].title}" to earn your certificate`
+          : `Pass all ${exams.length} course exams to earn your certificate (${exams.length - left.length} of ${exams.length} passed)`,
+    }
+  }
+  return { enrolled: true, complete: true, exams }
 }
 
 // ── Auto issue — called when a lesson is completed or a final test passed ─
@@ -391,7 +406,19 @@ const revokeCertificate = async (id) => {
   return { id: Number(id), certificate_no: rows[0].certificate_no }
 }
 
+// ── Student — can I get the certificate yet? (for the course player) ──────
+const getCertificateStatus = async (user_id, course_id) => {
+  const status = await getCompletionStatus(user_id, course_id)
+  const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
+  return {
+    ...status,
+    has_certificate: existing.length > 0,
+    certificate_no: existing[0]?.certificate_no ?? null,
+  }
+}
+
 export {
+  getCertificateStatus,
   issueCertificate,
   autoIssueOnCompletion,
   issueOrReissueOnPass,
