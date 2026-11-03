@@ -3,7 +3,7 @@
 import * as queries from './progress.queries.js'
 import * as lessonQueries from '../lessons/lessons.queries.js'
 import * as enrollmentService from '../enrollments/enrollments.service.js'
-import { autoIssueOnCompletion } from '../certificates/certificates.service.js'
+import { autoIssueOnCompletion, hasCertificate } from '../certificates/certificates.service.js'
 
 // ── Update lesson progress ─────────────────────────────────────────────────
 const updateLessonProgress = async (user_id, lesson_id, { is_completed, watch_time }) => {
@@ -43,8 +43,13 @@ const updateLessonProgress = async (user_id, lesson_id, { is_completed, watch_ti
   // Enrollment progress update karo
   await enrollmentService.updateProgress(user_id, course_id, progress)
 
-  // Course finished → certificate issued automatically (null if not eligible yet)
-  const certificate = progress >= 100 ? await autoIssueOnCompletion(user_id, course_id) : null
+  // Course finished → certificate issued automatically. Returned only when this
+  // save issued it, so the "Certificate earned" popup shows once — not on every
+  // later save of an already-certified course.
+  let certificate = null
+  if (progress >= 100 && !(await hasCertificate(user_id, course_id).catch(() => true))) {
+    certificate = await autoIssueOnCompletion(user_id, course_id)
+  }
 
   return {
     lesson_id,

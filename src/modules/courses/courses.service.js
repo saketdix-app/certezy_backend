@@ -5,6 +5,11 @@ import * as queries from './courses.queries.js'
 import * as cache from '../../utils/cache.js'
 import { AppError, parsePaging, buildPagination } from '../../utils/http.js'
 import { withPricing, withPricingAll } from '../../utils/pricing.js'
+import { contactHoursFor } from '../certificates/contactHours.js'
+
+// Contact hours on the certificate (PMP: 35), null for other courses
+const withContactHours = (course) =>
+  course ? { ...course, contact_hours: contactHoursFor(course.id)?.hours ?? null } : course
 
 const CACHE_TTL_LIST = 60 * 10 // 10 min
 const CACHE_TTL_SINGLE = 60 * 15 // 15 min
@@ -78,7 +83,7 @@ const getAllCourses = async (query = {}) => {
   const [count] = await queries.countCourses(filters)
 
   const result = {
-    courses: withPricingAll(rows),
+    courses: withPricingAll(rows).map(withContactHours),
     pagination: buildPagination({ total: count[0].total, page, limit }),
   }
 
@@ -96,7 +101,7 @@ const getCourseBySlug = async (slugOrId) => {
   if (!rows.length && /^\d+$/.test(String(slugOrId))) [rows] = await queries.getCourseById(slugOrId)
   if (!rows.length) throw AppError.notFound('Course')
 
-  const course = withPricing(rows[0])
+  const course = withContactHours(withPricing(rows[0]))
   await cache.set(cacheKey, course, CACHE_TTL_SINGLE)
   return course
 }

@@ -37,8 +37,11 @@ const generateCertPDF = async ({
     durationLabel: totalLessons ? `${totalLessons} lessons` : undefined,
     contactHours,
     pduId: contactHours ? pduIdFor(certificate_no) : undefined,
-    trainingStart,
-    trainingEnd,
+    // Training period only on contact-hour (PMP) certificates; the others
+    // show their completion date
+    trainingStart: contactHours ? trainingStart : undefined,
+    trainingEnd: contactHours ? trainingEnd : undefined,
+    dateLabel: contactHours ? 'DATE OF ISSUE' : 'DATE OF COMPLETION',
   })
   const key = `certificates/${certificate_no}.pdf`
   const url = await uploadFile({ buffer, key, mimeType: 'application/pdf', isPublic: true })
@@ -66,8 +69,8 @@ const attachPdf = async (cert, { student, course }) => {
 // ── Reissue: same certificate number, today's date, fresh PDF ─────────────
 const reissueCertificate = async (cert) => {
   await queries.touchIssuedAt(cert.id)
-  // Older certificates had no training period: enrollment day → today
-  if (!cert.training_start) {
+  // Older PMP certificates had no training period: enrollment day → today
+  if (!cert.training_start && contactHoursFor(cert.course_id)) {
     const enrollment = await checkEnrollment(cert.user_id, cert.course_id)
     if (enrollment?.enrolled_at) {
       const [now] = await queries.getCertificateById(cert.id)
@@ -144,8 +147,10 @@ const issueCertificate = async (user_id, course_id, { issued_at, training_start,
   // Certificate number generate karo
   const certificate_no = generateCertNumber()
 
-  // Training period: given by an admin, otherwise enrollment day → completion day
-  const enrollment = training_start ? null : await checkEnrollment(user_id, course_id)
+  // Training period (PMP only): given by an admin, otherwise enrollment day →
+  // completion day
+  const withTraining = Boolean(contactHoursFor(course_id))
+  const enrollment = training_start || !withTraining ? null : await checkEnrollment(user_id, course_id)
   const start = training_start ?? (enrollment?.enrolled_at ? toDay(enrollment.enrolled_at) : null)
   const end = training_end ?? toDay(issued_at ?? new Date())
 
@@ -156,8 +161,8 @@ const issueCertificate = async (user_id, course_id, { issued_at, training_start,
     certificate_no,
     valid_until: null,
     issued_at,
-    training_start: start,
-    training_end: start ? end : null,
+    training_start: withTraining ? start : null,
+    training_end: withTraining && start ? end : null,
   })
 
   const [rows] = await queries.getCertificateById(result.insertId)
@@ -180,9 +185,14 @@ const getCompletionStatus = async (user_id, course_id) => {
   if ((enrollment.progress ?? 0) < 100) {
     return { enrolled: true, complete: false, reason: 'Complete all lessons to earn your certificate' }
   }
-  const [finals] = await queries.getFinalTestResults(user_id, course_id)
-  if (finals.some((t) => !Number(t.passed))) {
-    return { enrolled: true, complete: false, reason: 'Pass the final test to earn your certificate' }
+  const [required] = await queries.getRequiredTestResults(user_id, course_id)
+  const notPassed = required.filter((t) => !Number(t.passed))
+  if (notPassed.length) {
+    return {
+      enrolled: true,
+      complete: false,
+      reason: `Pass ${notPassed.length > 1 ? 'the course quizzes' : `"${notPassed[0].title}"`} to earn your certificate`,
+    }
   }
   return { enrolled: true, complete: true }
 }
@@ -239,8 +249,9 @@ const verifyCertificate = async (certificate_no) => {
     course_title: c.course_title,
     course_slug: c.course_slug,
     issued_at: c.issued_at,
-    training_start: c.training_start,
-    training_end: c.training_end,
+    // Training period is only part of contact-hour (PMP) certificates
+    training_start: contactHoursFor(c.course_id) ? c.training_start : null,
+    training_end: contactHoursFor(c.course_id) ? c.training_end : null,
     valid_until: c.valid_until,
     pdf_url: c.pdf_url,
     issuer: ISSUER,
@@ -254,13 +265,19 @@ const verifyCertificate = async (certificate_no) => {
 // ── My certificates (student) ──────────────────────────────────────────────
 const getMyCertificates = async (user_id) => {
   const [rows] = await queries.getCertificatesByUserId(user_id)
-  return rows
+  return rows.map((r) =>
+    contactHoursFor(r.course_id) ? r : { ...r, training_start: null, training_end: null }
+  )
 }
 
 // ── Admin — issue certificate manually ────────────────────────────────────
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// Training dates apply to contact-hour (PMP) certificates only; others ignore them
+const trainingFor = (course_id, { training_start, training_end }) =>
+  contactHoursFor(course_id) ? { training_start, training_end } : { training_start: null, training_end: null }
 
 /**
  * Checks the admin's dates (all 'YYYY-MM-DD'): training start ≤ end, nothing
@@ -308,7 +325,7 @@ const adminIssueCertificate = async (
   const student = await findById(user_id)
   if (!student) throw httpError(404, 'Student not found')
   if (student.role !== 'student') throw httpError(400, 'Certificates can only be issued to student accounts')
-  const dates = parseAdminDates({ issue_date, training_start, training_end })
+  const dates = parseAdminDates({ issue_date, ...trainingFor(course_id, { training_start, training_end }) })
 
   const [existing] = await queries.getCertificateByUserAndCourse(user_id, course_id)
   if (existing.length) {
@@ -327,7 +344,10 @@ const regenerateCertificate = async (id, { issue_date, training_start, training_
   const [rows] = await queries.getCertificateById(id)
   const cert = rows[0]
   if (!cert) throw httpError(404, 'Certificate not found')
-  const dates = parseAdminDates({ issue_date, training_start, training_end })
+  const dates = parseAdminDates({
+    issue_date,
+    ...trainingFor(cert.course_id, { training_start, training_end }),
+  })
 
   await queries.updateCertificateDates(cert.id, dates)
   const [fresh] = await queries.getCertificateById(cert.id)
@@ -354,7 +374,11 @@ const getAllCertificates = async ({ page = 1, limit = 20, search } = {}) => {
   const total = Number(count[0].total)
 
   return {
-    certificates: rows.map((r) => ({ ...r, verify_url: `${env.frontendUrl}/verify/${r.certificate_no}` })),
+    certificates: rows.map((r) => ({
+      ...r,
+      verify_url: `${env.frontendUrl}/verify/${r.certificate_no}`,
+      has_training_period: Boolean(contactHoursFor(r.course_id)),
+    })),
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
 }
