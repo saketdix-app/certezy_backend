@@ -13,6 +13,7 @@ router.get('/verify/:certificateNo', controller.verifyCertificate)
 
 // ─── STUDENT ──────────────────────────────────────────────────
 router.get('/', authenticate, role(...LEARNER_ROLES), controller.getMyCertificates)
+router.get('/status/:courseId', authenticate, role(...LEARNER_ROLES), controller.getCertificateStatus)
 router.post('/claim/:courseId', authenticate, role(...LEARNER_ROLES), controller.claimCertificate)
 
 // ─── ADMIN ────────────────────────────────────────────────────

@@ -72,11 +72,8 @@ const getCertificateForVerify = (certificate_no) =>
   )
 
 // ── Final tests of a course + whether the student has passed each ─────────
-// Tests a student must pass for the certificate: every active final test, and
-// every quiz placed in the course content (a quiz lesson points to its test by
-// id or title, or the test is attached to a lesson). Tests without questions
-// can't be passed, so they don't count. Optional practice exams that aren't
-// part of the lessons stay optional.
+// Tests a student must pass for the certificate: every active exam of the
+// course that has questions (an exam without questions can't be passed).
 const getRequiredTestResults = (user_id, course_id) =>
   pool.query(
     `SELECT t.id, t.title,
@@ -87,16 +84,7 @@ const getRequiredTestResults = (user_id, course_id) =>
      FROM tests t
      WHERE t.course_id = ? AND t.status = 'active'
        AND EXISTS (SELECT 1 FROM questions q WHERE q.test_id = t.id)
-       AND (
-         t.type = 'final'
-         OR t.lesson_id IS NOT NULL
-         OR EXISTS (
-           SELECT 1 FROM lessons l
-           JOIN sections s ON s.id = l.section_id
-           WHERE s.course_id = t.course_id AND l.type = 'quiz'
-             AND (TRIM(l.content) = CAST(t.id AS CHAR) OR TRIM(l.content) = TRIM(t.title))
-         )
-       )`,
+     ORDER BY t.id`,
     [user_id, course_id]
   )
 

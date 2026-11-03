@@ -81,7 +81,18 @@ const revokeCertificate = async (req, res, next) => {
   }
 }
 
+// ── GET /certificates/status/:courseId — eligibility for the course player ─
+const getCertificateStatus = async (req, res, next) => {
+  try {
+    const data = await service.getCertificateStatus(req.user.id, req.params.courseId)
+    return success(res, { message: 'Certificate status', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
 export {
+  getCertificateStatus,
   getMyCertificates,
   claimCertificate,
   verifyCertificate,
