@@ -246,6 +246,12 @@ const STATIC_PAGES = {
     description: 'The terms that apply when you use Certezy courses, practice exams and certificates.',
     heading: 'Terms of Service',
   },
+  '/complaints-policy': {
+    title: `${TAB} | Customer Complaints & Resolution Policy`,
+    description:
+      'How to raise a complaint with Certezy E-Learning Pvt. Ltd., our response times, review process and escalation path.',
+    heading: 'Customer Complaints & Resolution Policy',
+  },
   '/verify': {
     title: `${TAB} | Verify a Certificate`,
     description:
@@ -471,7 +477,7 @@ export const sitemapXml = async () => {
       lastmod: isoDate(c.updated_at || c.created_at),
       priority: '0.8',
     })),
-    ...['/about', '/contact-us', '/verify', '/privacy-policy', '/terms-of-service'].map((p) => ({
+    ...['/about', '/contact-us', '/verify', '/privacy-policy', '/terms-of-service', '/complaints-policy'].map((p) => ({
       loc: `${SITE}${p}`,
       priority: '0.4',
     })),
@@ -547,6 +553,7 @@ export const llmsTxt = async () => {
     `- [Verify a certificate](${SITE}/verify)`,
     `- [Privacy policy](${SITE}/privacy-policy)`,
     `- [Terms of service](${SITE}/terms-of-service)`,
+    `- [Complaints policy](${SITE}/complaints-policy)`,
     '',
   ].join('\n')
 }
