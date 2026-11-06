@@ -5,6 +5,10 @@
 
 import { createHash } from 'node:crypto'
 
+// Off until Certezy is a PMI Authorized Training Partner: a self-made "PDU ID"
+// reads as a PMI-issued code. Only an ATP gets real PDU activity IDs from PMI.
+export const SHOW_PDU_ID = false
+
 const CONTACT_HOUR_COURSES = {
   44: { hours: 35, subject: 'Project Management' }, // PMP — Project Management Professional prep
 }

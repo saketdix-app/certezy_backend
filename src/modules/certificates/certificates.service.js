@@ -9,7 +9,7 @@ import env from '../../config/env.js'
 import { getCourseMeta } from '../lessons/lessons.queries.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
 import { renderCertificatePdf, formatCertificateName, ISSUER } from './certificate.pdf.js'
-import { contactHoursFor, pduIdFor } from './contactHours.js'
+import { SHOW_PDU_ID, contactHoursFor, pduIdFor } from './contactHours.js'
 
 // 'YYYY-MM-DD' (UTC) for a date column
 const toDay = (d) => new Date(d).toISOString().slice(0, 10)
@@ -36,7 +36,7 @@ const generateCertPDF = async ({
     verifyUrl: verifyUrlFor(certificate_no),
     durationLabel: totalLessons ? `${totalLessons} lessons` : undefined,
     contactHours,
-    pduId: contactHours ? pduIdFor(certificate_no) : undefined,
+    pduId: contactHours && SHOW_PDU_ID ? pduIdFor(certificate_no) : undefined,
     // Training period only on contact-hour (PMP) certificates; the others
     // show their completion date
     trainingStart: contactHours ? trainingStart : undefined,
@@ -272,7 +272,7 @@ const verifyCertificate = async (certificate_no) => {
     issuer: ISSUER,
     ...(contactHoursFor(c.course_id) && {
       contact_hours: contactHoursFor(c.course_id).hours,
-      pdu_id: pduIdFor(c.certificate_no),
+      ...(SHOW_PDU_ID && { pdu_id: pduIdFor(c.certificate_no) }),
     }),
   }
 }
