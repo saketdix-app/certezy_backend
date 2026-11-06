@@ -266,5 +266,15 @@ export const renderCertificatePdf = ({
       .join('   ·   ')
     doc.text(strip, 0, H - 64, { width: W, align: 'center', characterSpacing: 0.3 })
 
+    // PMI trademark attribution on PMP (contact-hour) certificates
+    if (contactHours) {
+      doc.fontSize(7).text(
+        '"PMI", "PMP" and "Project Management Professional" are marks of Project Management Institute, Inc.',
+        0,
+        H - 51,
+        { width: W, align: 'center' }
+      )
+    }
+
     doc.end()
   })

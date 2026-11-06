@@ -20,7 +20,7 @@ const TAB = 'CERTEZY'
 const ORG_NAME = 'Certezy E-Learning Pvt. Ltd.'
 const LOGO = `${SITE}/brand/certezy-logo.png`
 const DEFAULT_DESC =
-  'Online PMP®, CAPM® and project management certification training from Certezy: video lessons, ' +
+  'Online PMP® certification exam prep and IT certification training from Certezy: video lessons, ' +
   'full-length practice exams, 35 contact hours for PMP® and a verifiable certificate of completion.'
 
 // ── index.html of the built frontend (re-read when it changes) ─────────────
@@ -225,9 +225,9 @@ const STATIC_PAGES = {
   '/about': {
     title: `${TAB} | About Us — Project Management Certification Training`,
     description:
-      'Certezy E-Learning Pvt. Ltd. (Indore, India) offers online PMP®, CAPM® and project management courses with practice exams and verifiable certificates.',
+      'Certezy E-Learning Pvt. Ltd. (Indore, India) offers online PMP® exam prep, project management and IT certification courses with practice exams and verifiable certificates.',
     heading: `About ${BRAND}`,
-    text: 'Certezy E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for project management certifications such as PMP® and CAPM® with video lessons, practice exams that mirror the real test, and certificates of completion that can be verified online.',
+    text: 'Certezy E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for certifications such as the PMP® certification with video lessons, full-length practice exams, and certificates of completion that can be verified online.',
   },
   '/contact-us': {
     title: `${TAB} | Contact Us — WhatsApp, Email & Office Address`,
@@ -291,7 +291,7 @@ export const pageFor = async (rawPath) => {
         },
       ],
       body:
-        `<h1>Project management certification training: PMP®, CAPM® and more</h1>` +
+        `<h1>Project management and IT certification training: PMP® exam prep and more</h1>` +
         `<p>${esc(DEFAULT_DESC)}</p><h2>Courses</h2>${courseLinks(courses)}`,
     }
   }
@@ -300,7 +300,7 @@ export const pageFor = async (rawPath) => {
     const courses = await publishedCourses()
     return {
       ...base,
-      title: `${TAB} | All Courses — PMP®, CAPM®, Agile & Project Management`,
+      title: `${TAB} | All Courses — PMP® Exam Prep, Agile, Cloud & IT Certifications`,
       description: `Browse ${courses.length} online courses from Certezy: certification exam prep, practice tests and certificates of completion.`,
       ld: [
         {
@@ -547,6 +547,8 @@ export const llmsTxt = async () => {
     `- [Verify a certificate](${SITE}/verify)`,
     `- [Privacy policy](${SITE}/privacy-policy)`,
     `- [Terms of service](${SITE}/terms-of-service)`,
+    '',
+    'PMI, PMP, CAPM and PMBOK are marks of Project Management Institute, Inc. Certezy is an independent training provider and is not affiliated with, or endorsed by, Project Management Institute, Inc.',
     '',
   ].join('\n')
 }
