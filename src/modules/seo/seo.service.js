@@ -555,7 +555,7 @@ export const llmsTxt = async () => {
     `- [Terms of service](${SITE}/terms-of-service)`,
     `- [Complaints policy](${SITE}/complaints-policy)`,
     '',
-    'PMI, PMP, CAPM and PMBOK are marks of Project Management Institute, Inc. Certezy is an independent training provider and is not affiliated with, or endorsed by, Project Management Institute, Inc.',
+    'Certezy is a PMI Authorized Training Partner. The PMI Authorized Training Partner logo is a registered mark of Project Management Institute, Inc. PMI, PMP, CAPM and PMBOK are registered marks of Project Management Institute, Inc.',
     '',
   ].join('\n')
 }
