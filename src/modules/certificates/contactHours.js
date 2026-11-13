@@ -10,10 +10,17 @@ import { createHash } from 'node:crypto'
 export const SHOW_PDU_ID = false
 
 const CONTACT_HOUR_COURSES = {
-  44: { hours: 35, subject: 'Project Management' }, // PMP — Project Management Professional prep
+  // PMP — Project Management Professional prep. PMI's PMP application asks for the
+  // provider, course title, training hours and delivery mode (live / self-paced).
+  44: {
+    hours: 35,
+    subject: 'Project Management',
+    delivery: 'Self-paced online course',
+    alignedWith: 'PMP® Examination Content Outline',
+  },
 }
 
-/** @returns {{ hours: number, subject: string } | null} */
+/** @returns {{ hours: number, subject: string, delivery: string, alignedWith: string } | null} */
 export const contactHoursFor = (course_id) => CONTACT_HOUR_COURSES[course_id] ?? null
 
 /**
