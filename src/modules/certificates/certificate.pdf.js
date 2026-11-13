@@ -203,7 +203,7 @@ export const renderCertificatePdf = ({
 
     // Contact-hour courses (PMP): highlighted training-hours line
     if (contactHours) {
-      const label = `${contactHours.hours} Contact Hours of ${contactHours.subject} Training Completed`
+      const label = `${contactHours.hours} Hours of ${contactHours.subject} Training (Contact Hours) Completed`
       doc.font('Helvetica-Bold').fontSize(11.5)
       const w = doc.widthOfString(label, { characterSpacing: 0.4 }) + 36
       doc.roundedRect(cx - w / 2, y - 2, w, 22, 11).fill('#F6EED8')
@@ -217,6 +217,22 @@ export const renderCertificatePdf = ({
       const period = `Training period: ${formatDay(trainingStart)} – ${formatDay(trainingEnd)}`
       doc.fillColor(INK).font('Helvetica-Bold').fontSize(11)
       doc.text([period, durationLabel].filter(Boolean).join('   ·   '), 0, y, { width: W, align: 'center' })
+      // Delivery mode, alignment and assessment — what PMI checks in an audit
+      if (contactHours?.delivery) {
+        doc.fillColor(MUTED).font('Helvetica').fontSize(9.5)
+        doc.text(
+          [
+            contactHours.delivery,
+            contactHours.alignedWith && `aligned with the ${contactHours.alignedWith}`,
+            'end-of-course assessment passed',
+          ]
+            .filter(Boolean)
+            .join('  ·  '),
+          0,
+          y + 17,
+          { width: W, align: 'center' }
+        )
+      }
     } else {
       const sub = [durationLabel, `offered by ${ISSUER}`].filter(Boolean).join('  ·  ')
       doc.fillColor(MUTED).font('Helvetica').fontSize(10.5)
@@ -269,7 +285,7 @@ export const renderCertificatePdf = ({
     // PMI trademark attribution on PMP (contact-hour) certificates
     if (contactHours) {
       doc.fontSize(7).text(
-        '"PMI", "PMP" and "Project Management Professional" are marks of Project Management Institute, Inc.',
+        '"PMI", "PMP" and "Project Management Professional" are registered marks of Project Management Institute, Inc.',
         0,
         H - 51,
         { width: W, align: 'center' }
