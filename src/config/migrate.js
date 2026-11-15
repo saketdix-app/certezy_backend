@@ -50,6 +50,10 @@ const REQUIRED_TABLES = [
   'leads',
   'lead_activities',
   'lead_follow_ups',
+  'distribution_pools',
+  'distribution_pool_members',
+  'crm_settings',
+  'notifications',
 ]
 
 const tableExists = async (table) => {
@@ -451,6 +455,75 @@ const STEPS = [
           created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_fu_owner_due (owner_id, status, due_at),
           INDEX idx_fu_lead (lead_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
+    name: 'distribution_pools + members (Round Robin routing pools, with rotation cursor)',
+    run: async () => {
+      if (await tableExists('distribution_pools')) return false
+      await pool.query(`
+        CREATE TABLE distribution_pools (
+          id             INT AUTO_INCREMENT PRIMARY KEY,
+          name           VARCHAR(100) NOT NULL,
+          is_default     TINYINT(1) NOT NULL DEFAULT 0,
+          enabled        TINYINT(1) NOT NULL DEFAULT 1,
+          rules          JSON NULL,
+          priority       INT NOT NULL DEFAULT 100,
+          cursor_user_id INT NULL,
+          created_by     INT NULL,
+          created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at     DATETIME NULL ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS distribution_pool_members (
+          pool_id  INT NOT NULL,
+          user_id  INT NOT NULL,
+          position INT NOT NULL DEFAULT 0,
+          added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (pool_id, user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      // The default pool: every active consultant, in a stable order
+      await pool.query(`INSERT INTO distribution_pools (name, is_default, enabled, priority) VALUES ('All consultants', 1, 1, 1000)`)
+      return true
+    },
+  },
+  {
+    name: 'crm_settings table (Round Robin on/off and other CRM switches)',
+    run: async () => {
+      if (await tableExists('crm_settings')) return false
+      await pool.query(`
+        CREATE TABLE crm_settings (
+          setting    VARCHAR(64) PRIMARY KEY,
+          value      VARCHAR(255) NOT NULL,
+          updated_by INT NULL,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      // Off until an Admin turns it on (leads wait in the unassigned queue)
+      await pool.query(`INSERT INTO crm_settings (setting, value) VALUES ('round_robin_enabled', '0')`)
+      return true
+    },
+  },
+  {
+    name: 'notifications table (in-app: new lead assigned, leads waiting…)',
+    run: async () => {
+      if (await tableExists('notifications')) return false
+      await pool.query(`
+        CREATE TABLE notifications (
+          id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+          user_id    INT NOT NULL,
+          type       VARCHAR(40) NOT NULL,
+          title      VARCHAR(200) NOT NULL,
+          body       VARCHAR(500) NULL,
+          link       VARCHAR(255) NULL,
+          read_at    DATETIME NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_notif_user (user_id, read_at, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       return true

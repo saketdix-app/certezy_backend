@@ -352,6 +352,7 @@ const schemas = {
     platform_lead_id: Joi.string().max(100).allow('', null).optional(),
     consent: Joi.object().optional(),
     owner_id: Joi.number().integer().positive().allow(null).optional(),
+    auto_assign: Joi.boolean().optional(),
   }),
   updateLead: Joi.object({
     name: Joi.string().trim().min(2).max(150).optional(),
@@ -374,6 +375,24 @@ const schemas = {
     type: Joi.string().valid(...FOLLOW_UP_TYPES).default('call'),
     note: Joi.string().trim().max(500).allow('', null).optional(),
   }),
+  moveLeads: Joi.object({
+    lead_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).required(),
+    owner_id: Joi.number().integer().positive().required(),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+    mode: Joi.string().valid('assign', 'rebalance').optional(),
+  }),
+  distributionPool: Joi.object({
+    name: Joi.string().trim().min(2).max(100).optional(),
+    enabled: Joi.boolean().optional(),
+    priority: Joi.number().integer().min(1).max(999).optional(),
+    rules: Joi.object({
+      course_ids: Joi.array().items(Joi.number().integer().positive()).max(100),
+      sources: Joi.array().items(Joi.string().valid(...LEAD_SOURCES)).max(10),
+      campaigns: Joi.array().items(Joi.string().trim().max(150)).max(50),
+    }).optional(),
+    member_ids: Joi.array().items(Joi.number().integer().positive()).max(500).optional(),
+  }),
+  roundRobinSetting: Joi.object({ round_robin_enabled: Joi.boolean().required() }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

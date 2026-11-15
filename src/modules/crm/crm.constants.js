@@ -48,6 +48,16 @@ export const ACTIVITY_TYPES = ['note', 'call', 'message', 'email', 'whatsapp']
 export const FOLLOW_UP_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'demo', 'other']
 export const FOLLOW_UP_STATUSES = ['pending', 'done', 'missed', 'cancelled']
 
+// Sale attribution (PRD §10.3, decided): a sale counts for the consultant who
+// owns the lead when the payment is confirmed — not the original owner.
+export const SALE_ATTRIBUTION = 'owner_at_sale'
+
+// How a lead got its owner (lead_activities 'assignment' meta.how)
+export const ASSIGNMENT_HOW = ['on_create', 'round_robin', 'manual', 'transfer', 'rebalance']
+
+// Lead fields a distribution pool can route on (PRD §6.3 pool rules)
+export const POOL_RULE_KEYS = ['course_ids', 'sources', 'campaigns']
+
 // Enrollment status of the linked student, kept apart from the pipeline stage
 // and from course completion (PRD §4.2 terminology note).
 export const ENROLLMENT_STATUSES = ['none', 'application', 'payment_pending', 'enrolled']

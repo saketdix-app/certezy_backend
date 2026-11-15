@@ -30,6 +30,7 @@ import reviewRoutes from './modules/reviews/reviews.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
 import teamRoutes from './modules/team/team.routes.js'
 import crmRoutes from './modules/crm/crm.routes.js'
+import notificationRoutes from './modules/notifications/notifications.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
 import importRoutes from './modules/imports/imports.routes.js'
@@ -55,6 +56,7 @@ const ROUTES = [
   ['/reviews', reviewRoutes],
   ['/admin/team', teamRoutes],
   ['/crm', crmRoutes],
+  ['/notifications', notificationRoutes],
   ['/admin', adminRoutes],
   ['/contact', contactRoutes],
   ['/upload', uploadRoutes],

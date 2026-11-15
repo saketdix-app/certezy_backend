@@ -11,6 +11,7 @@ import { pool } from '../../config/db.js'
 import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { getCompletionStatus } from '../certificates/certificates.service.js'
+import { autoAssign } from './distribution.service.js'
 import {
   CLOSED_STAGES,
   REASON_REQUIRED,
@@ -182,6 +183,8 @@ export const createLead = async (req, body) => {
   await addActivity(id, actor.id, 'created', null, { source: body.source || 'manual' })
   if (ownerId) await addActivity(id, actor.id, 'assignment', null, { to: ownerId, how: 'on_create' })
   await audit(req, { action: 'lead.create', targetType: 'lead', targetId: id, details: { source: body.source || 'manual', owner_id: ownerId } })
+  // Admin chose "Auto (Round Robin)": distribute now (stays in the queue if no one can take it)
+  if (!ownerId && isManager(actor) && body.auto_assign) await autoAssign(id, { req })
   return getLead(actor, id)
 }
 
