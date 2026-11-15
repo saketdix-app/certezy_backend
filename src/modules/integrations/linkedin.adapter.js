@@ -7,18 +7,17 @@
 // NOTE: response shapes follow LinkedIn's Marketing API docs (versioned);
 // confirm against a real account when connecting.
 
-import env from '../../config/env.js'
+import { getCredentials } from './credentials.js'
 
 const API = 'https://api.linkedin.com/rest'
 
-const headers = () => ({
-  Authorization: `Bearer ${env.integrations.linkedin.accessToken}`,
-  'LinkedIn-Version': env.integrations.linkedin.version,
-  'X-Restli-Protocol-Version': '2.0.0',
-})
+const headers = async () => {
+  const { accessToken, version } = await getCredentials('linkedin')
+  return { Authorization: `Bearer ${accessToken}`, 'LinkedIn-Version': version, 'X-Restli-Protocol-Version': '2.0.0' }
+}
 
 const get = async (path, fetchImpl) => {
-  const res = await fetchImpl(`${API}${path}`, { headers: headers() })
+  const res = await fetchImpl(`${API}${path}`, { headers: await headers() })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(`LinkedIn API ${res.status}: ${data?.message ?? 'request failed'}`)
   return data
@@ -26,8 +25,8 @@ const get = async (path, fetchImpl) => {
 
 /** Form responses submitted after `sinceMs`. */
 export const fetchResponses = async (sinceMs, { fetchImpl = fetch } = {}) => {
-  const { accessToken, adAccountId } = env.integrations.linkedin
-  if (!accessToken || !adAccountId) throw new Error('LINKEDIN_ACCESS_TOKEN / LINKEDIN_AD_ACCOUNT_ID are not set on the server')
+  const { accessToken, adAccountId } = await getCredentials('linkedin')
+  if (!accessToken || !adAccountId) throw new Error('The LinkedIn access token / ad account ID are not set (Admin → Integrations)')
   const owner = encodeURIComponent(`urn:li:sponsoredAccount:${adAccountId}`)
   const start = Math.max(0, Number(sinceMs) || Date.now() - 7 * 86400e3)
   const data = await get(
