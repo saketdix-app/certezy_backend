@@ -82,7 +82,7 @@ const canManage = (actor, target) => {
   return false
 }
 
-const reauthenticate = async (actor, password) => {
+export const reauthenticate = async (actor, password) => {
   const fresh = await getUser(actor.id)
   if (!fresh?.password) {
     throw fail(400, 'Set a password on your account (Profile → Password) before making this change')
@@ -92,7 +92,7 @@ const reauthenticate = async (actor, password) => {
   }
 }
 
-const notifySuperAdmins = async (title, lines, exceptId) => {
+export const notifySuperAdmins = async (title, lines, exceptId) => {
   for (const sa of await activeSuperAdmins()) {
     if (sa.id === exceptId) continue
     await sendSecurityNoticeJob({ to: sa.email, name: sa.name, title, lines }).catch((err) =>

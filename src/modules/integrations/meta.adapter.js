@@ -4,7 +4,7 @@
 // access token → mapped to a CERTEZY lead. Platform lead id, form, ad and
 // campaign are kept as source metadata.
 
-import env from '../../config/env.js'
+import { getCredentials } from './credentials.js'
 
 /** Lead ids announced by a webhook body: [{ external_id, form_id, page_id, ad_id }]. */
 export const parseWebhook = (body) => {
@@ -28,8 +28,8 @@ const FIELDS = 'id,created_time,field_data,ad_id,ad_name,adset_id,adset_name,cam
 
 /** Fetch the full lead from the Graph API. Throws on network / API errors (retried by the queue). */
 export const fetchLead = async (leadgenId, { fetchImpl = fetch } = {}) => {
-  const { pageAccessToken, graphVersion } = env.integrations.meta
-  if (!pageAccessToken) throw new Error('META_PAGE_ACCESS_TOKEN is not set on the server')
+  const { pageAccessToken, graphVersion } = await getCredentials('meta')
+  if (!pageAccessToken) throw new Error('The Meta Page access token is not set (Admin → Integrations)')
   const url = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(leadgenId)}?fields=${FIELDS}`
   const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${pageAccessToken}` } })
   const data = await res.json().catch(() => ({}))

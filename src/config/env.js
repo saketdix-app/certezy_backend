@@ -59,7 +59,11 @@ const env = {
   supportPhone: 'India +91 98935 96975 | US +1 (512) 373-0152',
   // Comma-separated emails promoted to Super Admin the first time the role is
   // introduced (only while no Super Admin exists). Set on the server, not in code.
-  // 2.0 lead integrations (PRD §8). Secrets stay on the server only.
+  // Encrypts integration keys saved from the admin portal (32 bytes, base64 or hex).
+  // Optional: without it a key is derived from JWT_SECRET.
+  secretsEncryptionKey: process.env.SECRETS_ENCRYPTION_KEY || '',
+  // 2.0 lead integrations (PRD §8). Values saved in Admin → Integrations take
+  // priority over these; secrets never go to the browser.
   integrations: {
     meta: {
       appSecret: process.env.META_APP_SECRET || '',
@@ -73,7 +77,8 @@ const env = {
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
       businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
       verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
-      appSecret: process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET || '',
+      // Empty → the Meta app secret is used (see integrations/credentials.js)
+      appSecret: process.env.WHATSAPP_APP_SECRET || '',
     },
     linkedin: {
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',

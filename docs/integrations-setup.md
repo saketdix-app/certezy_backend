@@ -1,9 +1,20 @@
 # Lead integrations — setup guide (2.0 Phase 7)
 
 New leads from ads and forms arrive in the CRM automatically, go through the
-same duplicate checks, and are shared out by Round Robin. Secrets live only in
-the server's `~/app/backend/.env`; after changing it run `pm2 restart all`.
-Then switch each source on in **Admin → Integrations**.
+same duplicate checks, and are shared out by Round Robin.
+
+**Where the keys go:** a Super Admin pastes them into **Admin → Integrations**
+(each card → *Keys*), confirms with their password, then presses *Test
+connection* and switches the source on. Keys are encrypted in the database,
+never shown again (only "Saved"), audit-logged by name, and the other Super
+Admins get an email. No restart needed (the background worker picks changes
+up within a minute).
+
+The `.env` names below still work as a fallback; a key saved in the portal
+takes priority, and removing it in the portal falls back to `.env`.
+Optional: set `SECRETS_ENCRYPTION_KEY` (`openssl rand -base64 32`) in `.env`
+before saving keys. Without it the encryption key is derived from
+`JWT_SECRET`, so changing `JWT_SECRET` later means re-entering the keys.
 
 ## Website contact form
 Already on. Every Contact Us message also becomes a lead (source: Website).

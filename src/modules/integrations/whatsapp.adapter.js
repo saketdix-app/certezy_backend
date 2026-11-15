@@ -3,9 +3,9 @@
 // Inbound: webhook "messages" (texts, statuses). Outbound: free text inside
 // the 24-hour customer-service window, approved templates outside it.
 
-import env from '../../config/env.js'
+import { getCredentials } from './credentials.js'
 
-const graph = () => `https://graph.facebook.com/${env.integrations.meta.graphVersion}`
+const graph = (version) => `https://graph.facebook.com/${version}`
 
 /** Messages and delivery statuses from a webhook body. */
 export const parseWebhook = (body) => {
@@ -34,9 +34,9 @@ export const parseWebhook = (body) => {
 }
 
 const post = async (payload, fetchImpl) => {
-  const { token, phoneNumberId } = env.integrations.whatsapp
-  if (!token || !phoneNumberId) throw Object.assign(new Error('WhatsApp is not set up on the server'), { statusCode: 400 })
-  const res = await fetchImpl(`${graph()}/${phoneNumberId}/messages`, {
+  const { token, phoneNumberId, graphVersion } = await getCredentials('whatsapp')
+  if (!token || !phoneNumberId) throw Object.assign(new Error('WhatsApp keys are not set (Admin → Integrations)'), { statusCode: 400 })
+  const res = await fetchImpl(`${graph(graphVersion)}/${phoneNumberId}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', ...payload }),
@@ -66,11 +66,11 @@ export const sendTemplate = (to, name, language, params = [], { fetchImpl = fetc
     fetchImpl
   )
 
-/** Approved templates (needs WHATSAPP_BUSINESS_ACCOUNT_ID). */
+/** Approved templates (needs the WhatsApp business account ID). */
 export const listTemplates = async ({ fetchImpl = fetch } = {}) => {
-  const { token, businessAccountId } = env.integrations.whatsapp
+  const { token, businessAccountId, graphVersion } = await getCredentials('whatsapp')
   if (!token || !businessAccountId) return []
-  const res = await fetchImpl(`${graph()}/${businessAccountId}/message_templates?status=APPROVED&limit=100`, {
+  const res = await fetchImpl(`${graph(graphVersion)}/${businessAccountId}/message_templates?status=APPROVED&limit=100`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const data = await res.json().catch(() => ({}))

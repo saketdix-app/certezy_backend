@@ -16,6 +16,7 @@ import { getIntegration, recordEvent, SOURCES, syncLinkedIn } from './ingest.ser
 import * as meta from './meta.adapter.js'
 import * as whatsapp from './whatsapp.adapter.js'
 import { handleInbound, handleStatus } from './whatsapp.service.js'
+import { credentialStatus, getCredentials, saveCredentials, testConnection } from './credentials.js'
 import { linkedInChallengeResponse, verifyLinkedInSignature, verifyMetaSignature } from './signature.js'
 
 export const webhooks = Router()
@@ -26,8 +27,8 @@ const rawText = (req) => (Buffer.isBuffer(req.body) ? req.body : Buffer.from('')
 // ── Meta ──────────────────────────────────────────────────────────────────
 
 // Subscription check from the Meta app dashboard
-webhooks.get('/meta', (req, res) => {
-  const token = env.integrations.meta.verifyToken
+webhooks.get('/meta', async (req, res) => {
+  const token = (await getCredentials('meta').catch(() => ({}))).verifyToken
   if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
     return res.status(200).type('text/plain').send(String(req.query['hub.challenge'] ?? ''))
   }
@@ -36,8 +37,10 @@ webhooks.get('/meta', (req, res) => {
 
 webhooks.post('/meta', async (req, res) => {
   const raw = rawText(req)
-  if (!verifyMetaSignature(raw, req.get('x-hub-signature-256'), env.integrations.meta.appSecret)) {
-    await pool.query("UPDATE integrations SET last_error_at = UTC_TIMESTAMP(), last_error = 'Webhook with an invalid signature was rejected' WHERE source = 'meta'").catch(() => {})
+  const { appSecret } = await getCredentials('meta').catch(() => ({}))
+  if (!verifyMetaSignature(raw, req.get('x-hub-signature-256'), appSecret)) {
+    // Only worth flagging on the card once the integration is set up
+    if (appSecret) await pool.query("UPDATE integrations SET last_error_at = UTC_TIMESTAMP(), last_error = 'Webhook with an invalid signature was rejected' WHERE source = 'meta'").catch(() => {})
     return res.sendStatus(401)
   }
   // Answer fast (Meta retries slow webhooks); the queue does the work
@@ -58,16 +61,17 @@ webhooks.post('/meta', async (req, res) => {
 // ── LinkedIn ──────────────────────────────────────────────────────────────
 
 // Webhook validation: respond with the HMAC of the challenge code
-webhooks.get('/linkedin', (req, res) => {
+webhooks.get('/linkedin', async (req, res) => {
   const code = req.query.challengeCode
-  const secret = env.integrations.linkedin.clientSecret
+  const secret = (await getCredentials('linkedin').catch(() => ({}))).clientSecret
   if (!code || !secret) return res.sendStatus(400)
   return res.json({ challengeCode: code, challengeResponse: linkedInChallengeResponse(code, secret) })
 })
 
 // A notification only triggers an earlier sync; the sync fetches the responses
 webhooks.post('/linkedin', async (req, res) => {
-  if (!verifyLinkedInSignature(rawText(req), req.get('x-li-signature'), env.integrations.linkedin.clientSecret)) {
+  const { clientSecret } = await getCredentials('linkedin').catch(() => ({}))
+  if (!verifyLinkedInSignature(rawText(req), req.get('x-li-signature'), clientSecret)) {
     return res.sendStatus(401)
   }
   res.sendStatus(200)
@@ -76,8 +80,8 @@ webhooks.post('/linkedin', async (req, res) => {
 
 // ── WhatsApp (Cloud API) ──────────────────────────────────────────────────
 
-webhooks.get('/whatsapp', (req, res) => {
-  const token = env.integrations.whatsapp.verifyToken
+webhooks.get('/whatsapp', async (req, res) => {
+  const token = (await getCredentials('whatsapp').catch(() => ({}))).verifyToken
   if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
     return res.status(200).type('text/plain').send(String(req.query['hub.challenge'] ?? ''))
   }
@@ -86,7 +90,8 @@ webhooks.get('/whatsapp', (req, res) => {
 
 webhooks.post('/whatsapp', async (req, res) => {
   const raw = rawText(req)
-  if (!verifyMetaSignature(raw, req.get('x-hub-signature-256'), env.integrations.whatsapp.appSecret)) return res.sendStatus(401)
+  const { appSecret } = await getCredentials('whatsapp').catch(() => ({}))
+  if (!verifyMetaSignature(raw, req.get('x-hub-signature-256'), appSecret)) return res.sendStatus(401)
   res.sendStatus(200)
   try {
     const { messages, statuses } = whatsapp.parseWebhook(JSON.parse(raw.toString('utf8') || '{}'))
@@ -100,26 +105,6 @@ webhooks.post('/whatsapp', async (req, res) => {
 // ── Admin ─────────────────────────────────────────────────────────────────
 
 const managers = [authenticate, role('admin')]
-const READY = {
-  meta: () => ({
-    app_secret: Boolean(env.integrations.meta.appSecret),
-    verify_token: Boolean(env.integrations.meta.verifyToken),
-    page_access_token: Boolean(env.integrations.meta.pageAccessToken),
-  }),
-  linkedin: () => ({
-    client_secret: Boolean(env.integrations.linkedin.clientSecret),
-    access_token: Boolean(env.integrations.linkedin.accessToken),
-    ad_account_id: Boolean(env.integrations.linkedin.adAccountId),
-  }),
-  website: () => ({ contact_form: true }),
-  whatsapp: () => ({
-    token: Boolean(env.integrations.whatsapp.token),
-    phone_number_id: Boolean(env.integrations.whatsapp.phoneNumberId),
-    verify_token: Boolean(env.integrations.whatsapp.verifyToken),
-    app_secret: Boolean(env.integrations.whatsapp.appSecret),
-  }),
-}
-
 admin.get('/', ...managers, async (req, res, next) => {
   try {
     const base = `${env.frontendUrl}/api/v1/webhooks`
@@ -136,11 +121,11 @@ admin.get('/', ...managers, async (req, res, next) => {
     const integrations = []
     for (const source of SOURCES) {
       const i = await getIntegration(source)
-      const ready = READY[source]()
+      const { fields, configured } = await credentialStatus(source)
       integrations.push({
         ...i,
-        ready,
-        configured: Object.values(ready).every(Boolean),
+        credentials: fields, // set / from where — never the values
+        configured,
         webhook_url: source === 'website' ? null : `${base}/${source}`,
         last_7_days: Object.fromEntries(counts.filter((c) => c.source === source).map((c) => [c.status, Number(c.n)])),
       })
@@ -164,6 +149,27 @@ admin.put('/:source', ...managers, validate(schemas.integrationSettings), async 
     )
     await audit(req, { action: 'integration.update', targetType: 'integration', details: { source, enabled: req.body.enabled, config } })
     return success(res, { message: 'Saved', data: await getIntegration(source) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Keys: Super Admin only + password (checked in saveCredentials)
+admin.put('/:source/credentials', ...managers, validate(schemas.integrationCredentials), async (req, res, next) => {
+  try {
+    const credentials = await saveCredentials(req, req.params.source, req.body.values, req.body.password)
+    return success(res, { message: 'Keys saved', data: { credentials: credentials.fields, configured: credentials.configured } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+admin.post('/:source/test', ...managers, async (req, res, next) => {
+  try {
+    if (!SOURCES.includes(req.params.source)) return res.status(404).json({ success: false, message: 'Unknown integration' })
+    const result = await testConnection(req.params.source)
+    await audit(req, { action: 'integration.test', targetType: 'integration', result: result.ok ? 'success' : 'failed', details: { source: req.params.source } })
+    return success(res, { message: result.message, data: result })
   } catch (err) {
     next(err)
   }

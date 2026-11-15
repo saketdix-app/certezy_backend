@@ -429,6 +429,11 @@ const schemas = {
       default_course_id: Joi.number().integer().positive().allow(null).optional(),
     }).optional(),
   }),
+  // Keys typed in Admin → Integrations: '' removes the portal value
+  integrationCredentials: Joi.object({
+    values: Joi.object().pattern(Joi.string().max(40), Joi.string().allow('').max(4000)).min(1).required(),
+    password: Joi.string().max(200).required(),
+  }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

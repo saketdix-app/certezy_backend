@@ -57,6 +57,7 @@ const REQUIRED_TABLES = [
   'integrations',
   'lead_ingest_events',
   'whatsapp_messages',
+  'integration_secrets',
 ]
 
 const tableExists = async (table) => {
@@ -644,6 +645,24 @@ const STEPS = [
          ('abandoned_checkout_nudge', '1'), ('follow_up_reminders', '1')`
       )
       return changed
+    },
+  },
+  {
+    name: 'integration_secrets table (API keys saved from Admin → Integrations, encrypted)',
+    run: async () => {
+      if (await tableExists('integration_secrets')) return false
+      await pool.query(`
+        CREATE TABLE integration_secrets (
+          source     VARCHAR(20) NOT NULL,
+          name       VARCHAR(40) NOT NULL,
+          sealed     TEXT NOT NULL,
+          hint       VARCHAR(12) NULL,
+          updated_by INT NULL,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (source, name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
     },
   },
   {
