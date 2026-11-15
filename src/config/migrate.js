@@ -54,6 +54,8 @@ const REQUIRED_TABLES = [
   'distribution_pool_members',
   'crm_settings',
   'notifications',
+  'integrations',
+  'lead_ingest_events',
 ]
 
 const tableExists = async (table) => {
@@ -562,6 +564,46 @@ const STEPS = [
       const b = await addColumnIfMissing('certificates', 'lead_id', 'INT NULL')
       const c = await addColumnIfMissing('certificates', 'override_reason', 'VARCHAR(255) NULL')
       return a || b || c
+    },
+  },
+  {
+    name: 'integrations + lead_ingest_events (Meta / LinkedIn / website lead intake)',
+    run: async () => {
+      if (await tableExists('lead_ingest_events')) return false
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS integrations (
+          source          VARCHAR(20) PRIMARY KEY,
+          enabled         TINYINT(1) NOT NULL DEFAULT 0,
+          config          JSON NULL,
+          sync_cursor     VARCHAR(100) NULL,
+          last_event_at   DATETIME NULL,
+          last_success_at DATETIME NULL,
+          last_error_at   DATETIME NULL,
+          last_error      VARCHAR(500) NULL,
+          updated_by      INT NULL,
+          updated_at      DATETIME NULL ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await pool.query(
+        `INSERT IGNORE INTO integrations (source, enabled) VALUES ('meta', 0), ('linkedin', 0), ('website', 1)`
+      )
+      await pool.query(`
+        CREATE TABLE lead_ingest_events (
+          id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+          source       VARCHAR(20) NOT NULL,
+          external_id  VARCHAR(150) NOT NULL,
+          status       VARCHAR(20) NOT NULL DEFAULT 'received',
+          attempts     INT NOT NULL DEFAULT 0,
+          error        VARCHAR(500) NULL,
+          payload      JSON NULL,
+          lead_id      INT NULL,
+          received_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          processed_at DATETIME NULL,
+          UNIQUE KEY uq_ingest (source, external_id),
+          INDEX idx_ingest_status (status, received_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
     },
   },
   {

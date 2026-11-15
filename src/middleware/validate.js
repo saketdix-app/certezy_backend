@@ -409,6 +409,14 @@ const schemas = {
   }),
   revokeDiscount: Joi.object({ reason: Joi.string().trim().min(2).max(255).required() }),
   crmSettings: Joi.object({ max_discount_pct: Joi.number().min(1).max(100).required() }),
+  integrationSettings: Joi.object({
+    enabled: Joi.boolean().optional(),
+    config: Joi.object({
+      // form id → course id, so each form's leads are interested in the right course
+      form_courses: Joi.object().pattern(Joi.string().max(100), Joi.number().integer().positive()).optional(),
+      default_course_id: Joi.number().integer().positive().allow(null).optional(),
+    }).optional(),
+  }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

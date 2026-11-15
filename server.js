@@ -7,6 +7,7 @@ import { primeFxRate } from './src/utils/fx.js'
 import { schedulePurge } from './src/modules/auth/userDeletion.js'
 import { connectRedis, client as redisClient } from './src/config/redis.js'
 import './src/jobs/emailWorker.js'
+import './src/jobs/leadIngestWorker.js'
 import app from './src/app.js'
 
 const start = async () => {

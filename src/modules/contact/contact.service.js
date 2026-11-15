@@ -2,6 +2,7 @@
 
 import * as queries from './contact.queries.js'
 import { sendContactReplyJob } from '../../jobs/emailQueue.js'
+import { ingestWebsiteEnquiry } from '../integrations/ingest.service.js'
 
 // ── Submit contact form ────────────────────────────────────────
 const submit = async ({ user_id, name, email, phone, subject, message }) => {
@@ -33,6 +34,8 @@ const submit = async ({ user_id, name, email, phone, subject, message }) => {
   }
 
   const id = await queries.createContact({ user_id, name, email, phone, subject, message })
+  // 2.0: the enquiry also becomes a CRM lead (source "website"); never blocks the form
+  await ingestWebsiteEnquiry({ contactId: id, name, email, phone, subject, message })
   const contact = await queries.findById(id)
   return contact
 }

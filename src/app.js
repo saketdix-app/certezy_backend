@@ -31,6 +31,7 @@ import adminRoutes from './modules/admin/admin.routes.js'
 import teamRoutes from './modules/team/team.routes.js'
 import crmRoutes from './modules/crm/crm.routes.js'
 import notificationRoutes from './modules/notifications/notifications.routes.js'
+import { admin as integrationRoutes, webhooks as webhookRoutes } from './modules/integrations/integrations.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
 import importRoutes from './modules/imports/imports.routes.js'
@@ -57,6 +58,8 @@ const ROUTES = [
   ['/admin/team', teamRoutes],
   ['/crm', crmRoutes],
   ['/notifications', notificationRoutes],
+  ['/integrations', integrationRoutes],
+  ['/webhooks', webhookRoutes],
   ['/admin', adminRoutes],
   ['/contact', contactRoutes],
   ['/upload', uploadRoutes],
@@ -91,6 +94,8 @@ app.use(
 // before express.json().
 app.use(`${API_PREFIX}/payments/razorpay/webhook`, express.raw({ type: 'application/json' }))
 app.use('/api/payments/razorpay/webhook', express.raw({ type: 'application/json' })) // legacy path
+// Lead integration webhooks (Meta, LinkedIn) are signed over the raw body too
+app.use(`${API_PREFIX}/webhooks`, express.raw({ type: '*/*', limit: '1mb' }))
 
 // ─── BODY PARSING ────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }))
