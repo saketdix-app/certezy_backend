@@ -393,6 +393,22 @@ const schemas = {
     member_ids: Joi.array().items(Joi.number().integer().positive()).max(500).optional(),
   }),
   roundRobinSetting: Joi.object({ round_robin_enabled: Joi.boolean().required() }),
+  leadAssignCourse: Joi.object({
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    note: Joi.string().trim().max(255).allow('', null).optional(),
+  }),
+  leadDiscount: Joi.object({
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    discount_price: Joi.number().min(0).required(),
+    discount_price_inr: Joi.number().min(1).allow(null, '').optional(),
+    expiry_hours: Joi.number().integer().min(1).max(24 * 60).default(48),
+  }),
+  leadCertificate: Joi.object({
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    override_reason: Joi.string().trim().max(255).allow('', null).optional(),
+  }),
+  revokeDiscount: Joi.object({ reason: Joi.string().trim().min(2).max(255).required() }),
+  crmSettings: Joi.object({ max_discount_pct: Joi.number().min(1).max(100).required() }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

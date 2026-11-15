@@ -16,6 +16,7 @@ import env from '../../config/env.js'
 import * as queries from './payments.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { createEnrollment } from '../enrollments/enrollments.service.js'
+import { attributeSale } from '../crm/sales.service.js'
 import { generateInvoice } from '../../utils/invoice.js'
 import { generateInvoiceNumber } from '../../utils/generate.js'
 import { sendInvoiceJob } from '../../jobs/emailQueue.js'
@@ -218,6 +219,9 @@ const handlePaymentSuccess = async ({ payment_id, gateway_txn_id, user, courseTi
   if (payment.discount_link_id) {
     await markDiscountUsed(payment.discount_link_id, payment.user_id)
   }
+
+  // 2.0 CRM: credit the sale to the lead's owner at this moment (never throws)
+  await attributeSale(payment.id)
 
   // Invoice email queue mein daalo
   try {

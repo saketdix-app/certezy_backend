@@ -145,7 +145,20 @@ const getOffer = async (token) => {
   const [rows] = await queries.getOfferByToken(token)
   if (!rows.length) throw fail(404, 'This offer link is not valid')
   const o = rows[0]
-  const status = o.is_used ? 'used' : new Date() > new Date(o.expires_at) ? 'expired' : 'active'
+  const status = o.is_used
+    ? 'used'
+    : o.revoked_at
+      ? 'revoked'
+      : new Date() > new Date(o.expires_at)
+        ? 'expired'
+        : 'active'
+  // Click tracking for the CRM (PRD §7.2): someone opened the offer page
+  pool
+    .query(
+      'UPDATE discount_links SET click_count = click_count + 1, first_clicked_at = COALESCE(first_clicked_at, UTC_TIMESTAMP()) WHERE id = ?',
+      [o.id]
+    )
+    .catch(() => {})
   return {
     status,
     course: {
@@ -180,8 +193,9 @@ const verifyDiscountToken = async (token, user_id) => {
   }
   if (!allowed) throw fail(403, 'This discount link was sent to a different email address')
 
-  // Already used check
+  // Already used / revoked check
   if (discount.is_used) throw fail(410, 'Discount link already used')
+  if (discount.revoked_at) throw fail(410, 'This discount link was withdrawn')
 
   // Expiry check
   if (new Date() > new Date(discount.expires_at)) throw fail(410, 'Discount link has expired')

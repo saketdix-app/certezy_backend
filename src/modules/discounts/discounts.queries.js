@@ -45,7 +45,7 @@ const getDiscountById = (id) => pool.query(`SELECT * FROM discount_links WHERE i
 const getOfferByToken = (token) =>
   pool.query(
     `SELECT d.token, d.email, d.user_id, d.original_price, d.discount_price, d.discount_price_inr, d.discount_pct,
-            d.is_used, d.expires_at,
+            d.id, d.is_used, d.expires_at, d.revoked_at,
             c.id AS course_id, c.title AS course_title, c.slug AS course_slug,
             c.thumbnail AS course_thumbnail, c.short_desc AS course_short_desc
      FROM discount_links d
