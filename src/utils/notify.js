@@ -1,5 +1,5 @@
 // src/utils/notify.js
-// In-app notifications (2.0): new lead assigned, leads waiting in the queue…
+// In-app user_notifications (2.0): new lead assigned, leads waiting in the queue…
 // Never throws — a failed notification must not undo the action behind it.
 
 import { pool } from '../config/db.js'
@@ -9,7 +9,7 @@ export const notify = async (userIds, { type, title, body = null, link = null })
   if (!ids.length) return
   try {
     await pool.query(
-      `INSERT INTO notifications (user_id, type, title, body, link) VALUES ${ids.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+      `INSERT INTO user_notifications (user_id, type, title, body, link) VALUES ${ids.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
       ids.flatMap((id) => [id, type, title.slice(0, 200), body?.slice(0, 500) ?? null, link])
     )
   } catch (err) {

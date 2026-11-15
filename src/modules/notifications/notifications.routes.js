@@ -12,12 +12,12 @@ const router = Router()
 router.get('/', authenticate, async (req, res, next) => {
   try {
     const [items] = await pool.query(
-      `SELECT id, type, title, body, link, read_at, created_at FROM notifications
+      `SELECT id, type, title, body, link, read_at, created_at FROM user_notifications
        WHERE user_id = ? ORDER BY id DESC LIMIT 30`,
       [req.user.id]
     )
     const [[{ unread }]] = await pool.query(
-      'SELECT COUNT(*) AS unread FROM notifications WHERE user_id = ? AND read_at IS NULL',
+      'SELECT COUNT(*) AS unread FROM user_notifications WHERE user_id = ? AND read_at IS NULL',
       [req.user.id]
     )
     return success(res, { data: { items, unread: Number(unread) } })
@@ -31,7 +31,7 @@ router.put('/read', authenticate, async (req, res, next) => {
   try {
     const id = Number(req.query.id) || null
     await pool.query(
-      `UPDATE notifications SET read_at = UTC_TIMESTAMP() WHERE user_id = ? AND read_at IS NULL ${id ? 'AND id = ?' : ''}`,
+      `UPDATE user_notifications SET read_at = UTC_TIMESTAMP() WHERE user_id = ? AND read_at IS NULL ${id ? 'AND id = ?' : ''}`,
       id ? [req.user.id, id] : [req.user.id]
     )
     return success(res, { message: 'Marked as read' })
