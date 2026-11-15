@@ -14,13 +14,13 @@ import path from 'node:path'
 import { pool } from '../../config/db.js'
 
 const SITE = (process.env.SITE_URL || 'https://certezy.com').replace(/\/+$/, '')
-const BRAND = 'Certezy'
+const BRAND = 'CERTEZY'
 // Browser tabs and search results start with the brand in capitals
 const TAB = 'CERTEZY'
-const ORG_NAME = 'Certezy E-Learning Pvt. Ltd.'
+const ORG_NAME = 'CERTEZY E-Learning Pvt. Ltd.'
 const LOGO = `${SITE}/brand/certezy-logo.png`
 const DEFAULT_DESC =
-  'Online PMP® certification exam prep and IT certification training from Certezy: video lessons, ' +
+  'Online PMP® certification exam prep and IT certification training from CERTEZY: video lessons, ' +
   'full-length practice exams, 35 contact hours for PMP® and a verifiable certificate of completion.'
 
 // ── index.html of the built frontend (re-read when it changes) ─────────────
@@ -225,37 +225,37 @@ const STATIC_PAGES = {
   '/about': {
     title: `${TAB} | About Us — Project Management Certification Training`,
     description:
-      'Certezy E-Learning Pvt. Ltd. (Indore, India) offers online PMP® exam prep, project management and IT certification courses with practice exams and verifiable certificates.',
+      'CERTEZY E-Learning Pvt. Ltd. (Indore, India) offers online PMP® exam prep, project management and IT certification courses with practice exams and verifiable certificates.',
     heading: `About ${BRAND}`,
-    text: 'Certezy E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for certifications such as the PMP® certification with video lessons, full-length practice exams, and certificates of completion that can be verified online.',
+    text: 'CERTEZY E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for certifications such as the PMP® certification with video lessons, full-length practice exams, and certificates of completion that can be verified online.',
   },
   '/contact-us': {
     title: `${TAB} | Contact Us — WhatsApp, Email & Office Address`,
     description:
-      'Contact Certezy E-Learning Pvt. Ltd.: WhatsApp support 24/7 for India and the US, email, and our office at Streamline J-1 Tower, Indore, Madhya Pradesh.',
+      'Contact CERTEZY E-Learning Pvt. Ltd.: WhatsApp support 24/7 for India and the US, email, and our office at Streamline J-1 Tower, Indore, Madhya Pradesh.',
     heading: 'Contact us',
-    text: 'Certezy E-Learning Pvt. Ltd., 3rd Floor, Streamline J-1 Tower, PU-4, Scheme No. 54, Indore, Madhya Pradesh 452010, India. Chat with us on WhatsApp 24/7 or send us a message.',
+    text: 'CERTEZY E-Learning Pvt. Ltd., 3rd Floor, Streamline J-1 Tower, PU-4, Scheme No. 54, Indore, Madhya Pradesh 452010, India. Chat with us on WhatsApp 24/7 or send us a message.',
   },
   '/privacy-policy': {
     title: `${TAB} | Privacy Policy`,
-    description: 'How Certezy E-Learning Pvt. Ltd. collects, uses and protects your personal data.',
+    description: 'How CERTEZY E-Learning Pvt. Ltd. collects, uses and protects your personal data.',
     heading: 'Privacy Policy',
   },
   '/terms-of-service': {
     title: `${TAB} | Terms of Service`,
-    description: 'The terms that apply when you use Certezy courses, practice exams and certificates.',
+    description: 'The terms that apply when you use CERTEZY courses, practice exams and certificates.',
     heading: 'Terms of Service',
   },
   '/complaints-policy': {
     title: `${TAB} | Customer Complaints & Resolution Policy`,
     description:
-      'How to raise a complaint with Certezy E-Learning Pvt. Ltd., our response times, review process and escalation path.',
+      'How to raise a complaint with CERTEZY E-Learning Pvt. Ltd., our response times, review process and escalation path.',
     heading: 'Customer Complaints & Resolution Policy',
   },
   '/verify': {
     title: `${TAB} | Verify a Certificate`,
     description:
-      'Check that a Certezy certificate of completion is genuine by entering its certificate number.',
+      'Check that a CERTEZY certificate of completion is genuine by entering its certificate number.',
     heading: 'Verify a certificate',
   },
 }
@@ -307,7 +307,7 @@ export const pageFor = async (rawPath) => {
     return {
       ...base,
       title: `${TAB} | All Courses — PMP® Exam Prep, Agile, Cloud & IT Certifications`,
-      description: `Browse ${courses.length} online courses from Certezy: certification exam prep, practice tests and certificates of completion.`,
+      description: `Browse ${courses.length} online courses from CERTEZY: certification exam prep, practice tests and certificates of completion.`,
       ld: [
         {
           '@context': 'https://schema.org',
@@ -555,7 +555,7 @@ export const llmsTxt = async () => {
     `- [Terms of service](${SITE}/terms-of-service)`,
     `- [Complaints policy](${SITE}/complaints-policy)`,
     '',
-    'Certezy is a PMI Authorized Training Partner. The PMI Authorized Training Partner logo is a registered mark of Project Management Institute, Inc. PMI, PMP, CAPM and PMBOK are registered marks of Project Management Institute, Inc.',
+    'CERTEZY is a PMI Authorized Training Partner. The PMI Authorized Training Partner logo is a registered mark of Project Management Institute, Inc. PMI, PMP, CAPM and PMBOK are registered marks of Project Management Institute, Inc.',
     '',
   ].join('\n')
 }

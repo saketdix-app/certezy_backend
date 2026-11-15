@@ -30,7 +30,7 @@ export const ENROLLMENT_SOURCES = { PURCHASE: 'purchase', ADMIN: 'admin', FREE: 
 // site; the others are genuine reviews an admin entered on a learner's behalf
 // (shown publicly with this label).
 export const REVIEW_SOURCES = {
-  platform: 'Verified Certezy learner',
+  platform: 'Verified CERTEZY learner',
   classroom: 'Classroom / live batch',
   corporate: 'Corporate training',
   other_platform: 'Another platform',
