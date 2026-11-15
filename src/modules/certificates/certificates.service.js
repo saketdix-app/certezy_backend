@@ -1,5 +1,6 @@
 // src/modules/certificates/certificates.service.js
 
+import { onCourseCompleted } from '../crm/automation.service.js'
 import * as queries from './certificates.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { findById } from '../auth/auth.queries.js'
@@ -217,9 +218,12 @@ const getCompletionStatus = async (user_id, course_id) => {
 const autoIssueOnCompletion = async (user_id, course_id) => {
   try {
     const [courseRows] = await courseQueries.getCourseById(course_id)
-    if (!courseRows.length || !courseRows[0].certificate_eligible) return null
+    if (!courseRows.length) return null
     const { complete } = await getCompletionStatus(user_id, course_id)
     if (!complete) return null
+    // CRM automation: the lead moves to Course Done (also for courses without a certificate)
+    await onCourseCompleted(user_id, course_id)
+    if (!courseRows[0].certificate_eligible) return null
     return await issueCertificate(user_id, course_id)
   } catch (err) {
     console.error(`Auto certificate failed (user ${user_id}, course ${course_id}):`, err.message)

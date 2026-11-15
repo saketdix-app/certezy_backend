@@ -409,6 +409,18 @@ const schemas = {
   }),
   revokeDiscount: Joi.object({ reason: Joi.string().trim().min(2).max(255).required() }),
   crmSettings: Joi.object({ max_discount_pct: Joi.number().min(1).max(100).required() }),
+  whatsappSend: Joi.object({
+    text: Joi.string().trim().max(4096).allow('', null).optional(),
+    template: Joi.string().trim().max(100).optional(),
+    language: Joi.string().trim().max(20).optional(),
+    params: Joi.array().items(Joi.string().max(500)).max(10).optional(),
+  }).or('text', 'template'),
+  automations: Joi.object({
+    auto_stage_on_payment: Joi.boolean(),
+    auto_course_done: Joi.boolean(),
+    abandoned_checkout_nudge: Joi.boolean(),
+    follow_up_reminders: Joi.boolean(),
+  }).min(1),
   integrationSettings: Joi.object({
     enabled: Joi.boolean().optional(),
     config: Joi.object({

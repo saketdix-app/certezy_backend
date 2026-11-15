@@ -18,7 +18,7 @@ import { findDuplicates, findStudentId, normalizeEmail, normalizePhone } from '.
 import * as meta from './meta.adapter.js'
 import * as linkedin from './linkedin.adapter.js'
 
-export const SOURCES = ['meta', 'linkedin', 'website']
+export const SOURCES = ['meta', 'linkedin', 'website', 'whatsapp']
 const parseJson = (v) => (typeof v === 'string' ? JSON.parse(v) : v ?? null)
 const clip = (s, n = 500) => String(s ?? '').slice(0, n)
 
@@ -124,7 +124,7 @@ const fetchAndMap = async (source, payload, config) => {
     const questions = await linkedin.formQuestions(payload.response?.versionedLeadGenFormUrn ?? payload.response?.leadGenFormUrn)
     return linkedin.mapResponse(payload.response, questions, config)
   }
-  if (source === 'website') return payload.lead
+  if (source === 'website' || source === 'whatsapp') return payload.lead
   throw new Error(`Unknown source ${source}`)
 }
 

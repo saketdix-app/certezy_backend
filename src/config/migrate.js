@@ -56,6 +56,7 @@ const REQUIRED_TABLES = [
   'notifications',
   'integrations',
   'lead_ingest_events',
+  'whatsapp_messages',
 ]
 
 const tableExists = async (table) => {
@@ -604,6 +605,44 @@ const STEPS = [
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       return true
+    },
+  },
+  {
+    name: 'whatsapp_messages + automation columns (2.0 phase 8)',
+    run: async () => {
+      let changed = false
+      if (!(await tableExists('whatsapp_messages'))) {
+        await pool.query(`
+          CREATE TABLE whatsapp_messages (
+            id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+            lead_id       INT NULL,
+            direction     VARCHAR(3) NOT NULL,
+            wa_id         VARCHAR(30) NOT NULL,
+            wa_message_id VARCHAR(150) NULL,
+            kind          VARCHAR(20) NOT NULL DEFAULT 'text',
+            body          TEXT NULL,
+            template      VARCHAR(100) NULL,
+            status        VARCHAR(20) NOT NULL DEFAULT 'received',
+            error         VARCHAR(300) NULL,
+            sent_by       INT NULL,
+            created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_wa_msg (wa_message_id),
+            INDEX idx_wa_lead (lead_id, id),
+            INDEX idx_wa_from (wa_id, direction, created_at)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `)
+        changed = true
+      }
+      changed = (await addColumnIfMissing('payments', 'nudged_at', 'DATETIME NULL')) || changed
+      changed = (await addColumnIfMissing('lead_follow_ups', 'reminded_at', 'DATETIME NULL')) || changed
+      await pool.query("INSERT IGNORE INTO integrations (source, enabled) VALUES ('whatsapp', 0)")
+      // Automations start on; Admins can switch each off (Admin → Integrations)
+      await pool.query(
+        `INSERT IGNORE INTO crm_settings (setting, value) VALUES
+         ('auto_stage_on_payment', '1'), ('auto_course_done', '1'),
+         ('abandoned_checkout_nudge', '1'), ('follow_up_reminders', '1')`
+      )
+      return changed
     },
   },
   {

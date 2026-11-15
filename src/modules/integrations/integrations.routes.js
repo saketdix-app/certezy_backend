@@ -14,6 +14,8 @@ import { audit } from '../../utils/audit.js'
 import { enqueueIngest } from '../../jobs/leadIngestQueue.js'
 import { getIntegration, recordEvent, SOURCES, syncLinkedIn } from './ingest.service.js'
 import * as meta from './meta.adapter.js'
+import * as whatsapp from './whatsapp.adapter.js'
+import { handleInbound, handleStatus } from './whatsapp.service.js'
 import { linkedInChallengeResponse, verifyLinkedInSignature, verifyMetaSignature } from './signature.js'
 
 export const webhooks = Router()
@@ -72,6 +74,29 @@ webhooks.post('/linkedin', async (req, res) => {
   syncLinkedIn(enqueueIngest).catch(() => {})
 })
 
+// ── WhatsApp (Cloud API) ──────────────────────────────────────────────────
+
+webhooks.get('/whatsapp', (req, res) => {
+  const token = env.integrations.whatsapp.verifyToken
+  if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
+    return res.status(200).type('text/plain').send(String(req.query['hub.challenge'] ?? ''))
+  }
+  return res.sendStatus(403)
+})
+
+webhooks.post('/whatsapp', async (req, res) => {
+  const raw = rawText(req)
+  if (!verifyMetaSignature(raw, req.get('x-hub-signature-256'), env.integrations.whatsapp.appSecret)) return res.sendStatus(401)
+  res.sendStatus(200)
+  try {
+    const { messages, statuses } = whatsapp.parseWebhook(JSON.parse(raw.toString('utf8') || '{}'))
+    for (const m of messages) await handleInbound(m)
+    for (const s of statuses) await handleStatus(s)
+  } catch (err) {
+    console.error('WhatsApp webhook handling failed:', err.message)
+  }
+})
+
 // ── Admin ─────────────────────────────────────────────────────────────────
 
 const managers = [authenticate, role('admin')]
@@ -87,6 +112,12 @@ const READY = {
     ad_account_id: Boolean(env.integrations.linkedin.adAccountId),
   }),
   website: () => ({ contact_form: true }),
+  whatsapp: () => ({
+    token: Boolean(env.integrations.whatsapp.token),
+    phone_number_id: Boolean(env.integrations.whatsapp.phoneNumberId),
+    verify_token: Boolean(env.integrations.whatsapp.verifyToken),
+    app_secret: Boolean(env.integrations.whatsapp.appSecret),
+  }),
 }
 
 admin.get('/', ...managers, async (req, res, next) => {

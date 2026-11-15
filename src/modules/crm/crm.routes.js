@@ -38,6 +38,13 @@ router.get('/sales', ...crm, controller.sales)
 router.get('/settings', ...crm, controller.settings)
 router.put('/settings', ...crm, validate(schemas.crmSettings), controller.saveSettings)
 
+// WhatsApp conversation on a lead, and automations (phase 8)
+router.get('/leads/:id/whatsapp', ...crm, controller.whatsappThread)
+router.post('/leads/:id/whatsapp', ...crm, validate(schemas.whatsappSend), controller.whatsappSend)
+router.get('/whatsapp/templates', ...crm, controller.whatsappTemplates)
+router.get('/automations', ...crm, controller.automationsGet)
+router.put('/automations', ...crm, validate(schemas.automations), controller.automationsSave)
+
 // Reports (Admins; the service checks the role)
 router.get('/reports/overview', ...crm, controller.reportOverview)
 router.get('/reports/leads.csv', ...crm, controller.reportExport)
