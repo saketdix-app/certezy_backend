@@ -8,6 +8,7 @@ import { schedulePurge } from './src/modules/auth/userDeletion.js'
 import { connectRedis, client as redisClient } from './src/config/redis.js'
 import './src/jobs/emailWorker.js'
 import './src/jobs/leadIngestWorker.js'
+import './src/jobs/crmScheduler.js'
 import app from './src/app.js'
 
 const start = async () => {

@@ -67,6 +67,14 @@ const env = {
       pageAccessToken: process.env.META_PAGE_ACCESS_TOKEN || '',
       graphVersion: process.env.META_GRAPH_VERSION || 'v21.0',
     },
+    whatsapp: {
+      // WhatsApp Cloud API (same Meta app: webhooks are signed with its app secret)
+      token: process.env.WHATSAPP_TOKEN || '',
+      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+      businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
+      verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
+      appSecret: process.env.WHATSAPP_APP_SECRET || process.env.META_APP_SECRET || '',
+    },
     linkedin: {
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
       accessToken: process.env.LINKEDIN_ACCESS_TOKEN || '',

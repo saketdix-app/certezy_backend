@@ -5,6 +5,9 @@ import * as distribution from './distribution.service.js'
 import * as actions from './actions.service.js'
 import { salesReport } from './sales.service.js'
 import * as reports from './reports.service.js'
+import * as automation from './automation.service.js'
+import * as whatsappService from '../integrations/whatsapp.service.js'
+import { listTemplates } from '../integrations/whatsapp.adapter.js'
 import { success } from '../../utils/response.js'
 
 const handle = (fn) => async (req, res, next) => {
@@ -110,3 +113,14 @@ export const reportExport = handle(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store')
   return res.send(`\uFEFF${csv}`) // BOM so Excel reads ₹ and accents correctly
 })
+
+// ── WhatsApp & automations (phase 8) ──
+export const whatsappThread = handle(async (req, res) => success(res, { data: await whatsappService.thread(req.user, req.params.id) }))
+export const whatsappSend = handle(async (req, res) =>
+  success(res, { message: 'Sent on WhatsApp', data: await whatsappService.sendFromLead(req, req.params.id, req.body) })
+)
+export const whatsappTemplates = handle(async (req, res) => success(res, { data: await listTemplates() }))
+export const automationsGet = handle(async (req, res) => success(res, { data: await automation.getAutomations() }))
+export const automationsSave = handle(async (req, res) =>
+  success(res, { message: 'Saved', data: await automation.setAutomations(req, req.body) })
+)

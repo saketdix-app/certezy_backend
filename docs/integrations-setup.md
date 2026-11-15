@@ -63,6 +63,37 @@ LinkedIn's response format is versioned (`LINKEDIN_API_VERSION`, default
 202411). The field mapping follows LinkedIn's documentation; check the first
 real leads after connecting and tell the developer if any field is empty.
 
+## WhatsApp (Cloud API) — 2.0 Phase 8
+You need: a WhatsApp Business account on Meta's Cloud API with a phone number
+(it can't be the number you use in the WhatsApp app at the same time), and
+approved message templates for writing to people first.
+
+1. In the same Meta app (or a new Business app), add the **WhatsApp** product
+   and connect your WhatsApp Business account and phone number.
+2. **Phone number ID** and **WhatsApp Business Account ID** — WhatsApp → API
+   Setup → `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`.
+3. **Token** — a System User token with `whatsapp_business_messaging` and
+   `whatsapp_business_management` → `WHATSAPP_TOKEN`.
+4. **Verify token** — any random string → `WHATSAPP_VERIFY_TOKEN`.
+   (Webhooks are checked with the app secret: `META_APP_SECRET`, or
+   `WHATSAPP_APP_SECRET` if WhatsApp uses a different app.) Restart.
+5. **Webhook** — WhatsApp → Configuration → Callback URL
+   `https://certezy.com/api/v1/webhooks/whatsapp`, the verify token, then
+   subscribe to **messages**.
+6. **Templates** — create and get approved (e.g. a follow-up and a payment
+   reminder) in WhatsApp Manager. Only approved templates can be sent when
+   the person hasn't written in the last 24 hours (WhatsApp's rule).
+7. Switch WhatsApp on in Admin → Integrations. Messages from new numbers
+   become leads (source WhatsApp); messages from existing leads appear on
+   their WhatsApp thread, and the consultant is notified.
+
+## Automations — 2.0 Phase 8
+On by default; switch each off in Admin → Integrations → Automations.
+- Paid sale → the lead moves to **Application** (if it was earlier).
+- Course completed → the lead moves to **Course Done**.
+- Checkout started but unpaid after 1 hour → the consultant is told once.
+- Follow-up due within 15 minutes → the consultant is reminded once.
+
 ## When something goes wrong
 - **Admin → Integrations** shows the last error per source and every
   import. Failed imports retry automatically 5 times (over ~15 minutes),

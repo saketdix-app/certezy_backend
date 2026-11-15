@@ -12,6 +12,7 @@
 import { pool } from '../../config/db.js'
 import { notify } from '../../utils/notify.js'
 import { SALE_ATTRIBUTION } from './crm.constants.js'
+import { onSale } from './automation.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const MANAGERS = ['super_admin', 'admin']
@@ -78,6 +79,7 @@ export const attributeSale = async (paymentId) => {
         link: `/consultant/leads?lead=${lead.id}`,
       })
     }
+    await onSale(lead.id) // automation: paid → Application (if earlier)
     return { lead_id: lead.id, attributed_to: lead.owner_id ?? null }
   } catch (err) {
     console.error(`Sale attribution for payment ${paymentId} failed:`, err.message)
