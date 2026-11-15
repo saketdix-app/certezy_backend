@@ -8,7 +8,11 @@ const role = (...allowedRoles) => {
       return next(err)
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    // A Super Admin can do everything an Admin can
+    const allowed =
+      allowedRoles.includes(req.user.role) ||
+      (req.user.role === 'super_admin' && allowedRoles.includes('admin'))
+    if (!allowed) {
       const err = new Error('Access denied — insufficient permissions')
       err.statusCode = 403
       return next(err)

@@ -21,7 +21,17 @@ export const DIFFICULTIES = ['easy', 'medium', 'hard']
 
 // Who can use learner features (enroll, buy, learn, take tests, review).
 // Admins and sub-admins can too, so they can try every part of the site.
-export const LEARNER_ROLES = ['student', 'admin', 'sub_admin']
+export const LEARNER_ROLES = ['student', 'super_admin', 'admin', 'sub_admin']
+
+// ── 2.0 roles & privileges (PRD §1–3) ────────────────────────────────────
+// Staff roles, most powerful first. 'consultant' is the sales team (CRM, phase 3).
+export const STAFF_ROLES = ['super_admin', 'admin', 'sub_admin', 'consultant']
+
+// Delegated privileges a Super Admin can grant to an Admin. Recorded in
+// user_permission_grants with grantor, time and revocation (PRD §2.1).
+export const PRIVILEGES = {
+  CREATE_SUPER_ADMIN: 'super_admin.create',
+}
 
 // Enrollment.source values
 export const ENROLLMENT_SOURCES = { PURCHASE: 'purchase', ADMIN: 'admin', FREE: 'free' }

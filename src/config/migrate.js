@@ -3,7 +3,8 @@
 // Each step checks INFORMATION_SCHEMA first, so running it repeatedly is safe.
 
 import { pool } from './db.js'
-import { LESSON_TYPES } from '../constants.js'
+import env from './env.js'
+import { LESSON_TYPES, STAFF_ROLES } from '../constants.js'
 
 const columnInfo = async (table, column) => {
   const [rows] = await pool.query(
@@ -43,6 +44,8 @@ const REQUIRED_TABLES = [
   'certificates',
   'reviews',
   'contacts',
+  'user_permission_grants',
+  'audit_logs',
 ]
 
 const tableExists = async (table) => {
@@ -304,6 +307,75 @@ const STEPS = [
           `${prefix}%`,
         ])
       }
+      return true
+    },
+  },
+  {
+    name: "users.role: 'super_admin' and 'consultant' (2.0 roles)",
+    run: () => ensureEnumValues('users', 'role', ['student', ...STAFF_ROLES]),
+  },
+  {
+    name: 'initial Super Admins (INITIAL_SUPER_ADMINS in .env)',
+    run: async () => {
+      // Only while no Super Admin exists; after that Super Admins manage the list
+      if (!env.initialSuperAdmins.length) return false
+      const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM users WHERE role = 'super_admin'")
+      if (n > 0) return false
+      const [res] = await pool.query(
+        `UPDATE users SET role = 'super_admin'
+         WHERE LOWER(email) IN (?) AND deleted_at IS NULL`,
+        [env.initialSuperAdmins]
+      )
+      return res.affectedRows > 0
+    },
+  },
+  {
+    name: 'users.last_active_at (last sign-in / session refresh, shown on the Team page)',
+    run: () => addColumnIfMissing('users', 'last_active_at', 'DATETIME NULL'),
+  },
+  {
+    name: 'user_permission_grants table (delegated privileges, e.g. super_admin.create)',
+    run: async () => {
+      if (await tableExists('user_permission_grants')) return false
+      // No foreign keys to users(id): the live users.id type differs from the schema file
+      await pool.query(`
+        CREATE TABLE user_permission_grants (
+          id             INT AUTO_INCREMENT PRIMARY KEY,
+          user_id        INT NOT NULL,
+          permission_key VARCHAR(64) NOT NULL,
+          granted_by     INT NOT NULL,
+          granted_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          revoked_by     INT NULL,
+          revoked_at     DATETIME NULL,
+          INDEX idx_upg_user (user_id, permission_key, revoked_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
+    name: 'audit_logs table (append-only record of sensitive actions)',
+    run: async () => {
+      if (await tableExists('audit_logs')) return false
+      await pool.query(`
+        CREATE TABLE audit_logs (
+          id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+          actor_id    INT NULL,
+          actor_role  VARCHAR(20) NULL,
+          action      VARCHAR(64) NOT NULL,
+          target_type VARCHAR(32) NULL,
+          target_id   INT NULL,
+          result      ENUM('success','denied','failed') NOT NULL DEFAULT 'success',
+          details     JSON NULL,
+          ip          VARCHAR(64) NULL,
+          user_agent  VARCHAR(255) NULL,
+          created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_audit_created (created_at),
+          INDEX idx_audit_action (action, created_at),
+          INDEX idx_audit_target (target_type, target_id),
+          INDEX idx_audit_actor (actor_id, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
       return true
     },
   },

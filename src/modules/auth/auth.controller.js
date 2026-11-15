@@ -1,6 +1,7 @@
 // src/modules/auth/auth.controller.js
 
 import * as service from './auth.service.js'
+import { assertCanSetStatus } from '../team/team.service.js'
 import { softDeleteUser, restoreUser, RECOVERY_DAYS } from './userDeletion.js'
 import { requestPasswordReset, checkResetToken, resetPassword } from './passwordReset.js'
 import { success } from '../../utils/response.js'
@@ -184,6 +185,7 @@ const restoreDeletedUser = async (req, res, next) => {
 
 const updateUserStatus = async (req, res, next) => {
   try {
+    await assertCanSetStatus(req.user, req.params.id, Boolean(req.body.is_active))
     const user = await service.updateUserStatus(req.params.id, req.body.is_active)
     return success(res, { message: 'User status updated', data: { user } })
   } catch (err) {

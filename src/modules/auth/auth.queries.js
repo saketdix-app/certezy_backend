@@ -33,6 +33,8 @@ const saveRefreshToken = async ({ userId, token, expiresAt }) => {
     token,
     expiresAt,
   ])
+  // Sign-in or session refresh: "last active" on the Team page
+  await pool.query('UPDATE users SET last_active_at = UTC_TIMESTAMP() WHERE id = ?', [userId]).catch(() => {})
 }
 
 const findRefreshToken = async (token) => {

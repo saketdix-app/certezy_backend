@@ -304,8 +304,25 @@ const createSubAdminSchema = Joi.object({
   can_manage_tests: Joi.number().integer().valid(0, 1).optional(),
 })
 
+// ── 2.0 Team (staff accounts) ────────────────────────────────────────────
+const staffRole = Joi.string().valid('super_admin', 'admin', 'sub_admin', 'consultant')
+const reauthPassword = Joi.string().max(72).allow('', null).optional()
+
 const schemas = {
   register: registerSchema,
+  createTeamMember: Joi.object({
+    name: Joi.string().trim().min(2).max(100).required(),
+    email: Joi.string().trim().email().max(150).lowercase().required(),
+    mobile: Joi.string().trim().max(20).allow('', null).optional(),
+    role: staffRole.required(),
+    password: reauthPassword, // your own password, for Super Admin creation
+  }),
+  changeTeamRole: Joi.object({
+    role: Joi.alternatives().try(staffRole, Joi.string().valid('student')).required(),
+    password: reauthPassword,
+  }),
+  setTeamStatus: Joi.object({ is_active: Joi.boolean().required() }),
+  reauth: Joi.object({ password: reauthPassword }),
   createSubAdmin: createSubAdminSchema,
   assignCourses: Joi.object({
     user_id: Joi.number().integer().positive().required(),

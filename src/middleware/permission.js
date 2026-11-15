@@ -8,7 +8,7 @@ const permission = (permissionKey) => {
     try {
       // Sirf sub_admin ke liye check hoga
       // Admin ko saari permissions hain by default
-      if (req.user.role === 'admin') return next()
+      if (req.user.role === 'admin' || req.user.role === 'super_admin') return next()
 
       const [rows] = await adminQueries.getPermissionsByUserId(req.user.id)
 

@@ -22,6 +22,21 @@ const BCRYPT_ROUNDS = 12
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex')
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 
+/** One live set-password link for a user (older unused links stop working). */
+export const issuePasswordLink = async (userId, minutes = TOKEN_TTL_MINUTES) => {
+  const token = crypto.randomBytes(32).toString('hex')
+  await pool.query(
+    'UPDATE password_resets SET used_at = UTC_TIMESTAMP() WHERE user_id = ? AND used_at IS NULL',
+    [userId]
+  )
+  await pool.query(
+    `INSERT INTO password_resets (user_id, token_hash, expires_at)
+     VALUES (?, ?, UTC_TIMESTAMP() + INTERVAL ? MINUTE)`,
+    [userId, hashToken(token), minutes]
+  )
+  return `${env.frontendUrl}/reset-password?token=${token}`
+}
+
 export const requestPasswordReset = async (rawEmail) => {
   const email = String(rawEmail ?? '')
     .trim()
@@ -30,21 +45,11 @@ export const requestPasswordReset = async (rawEmail) => {
   // Unknown, deactivated or deleted accounts get no email (and the same answer)
   if (!user || !user.is_active || user.deleted_at) return
 
-  const token = crypto.randomBytes(32).toString('hex')
-  // One live link at a time: older unused links stop working
-  await pool.query(
-    'UPDATE password_resets SET used_at = UTC_TIMESTAMP() WHERE user_id = ? AND used_at IS NULL',
-    [user.id]
-  )
-  await pool.query(
-    `INSERT INTO password_resets (user_id, token_hash, expires_at)
-     VALUES (?, ?, UTC_TIMESTAMP() + INTERVAL ? MINUTE)`,
-    [user.id, hashToken(token), TOKEN_TTL_MINUTES]
-  )
+  const resetUrl = await issuePasswordLink(user.id)
   await sendPasswordResetJob({
     to: user.email,
     name: user.name,
-    resetUrl: `${env.frontendUrl}/reset-password?token=${token}`,
+    resetUrl,
     minutes: TOKEN_TTL_MINUTES,
     // Google/GitHub accounts without a password are setting one, not resetting
     provider: user.password ? undefined : user.oauth_provider,
