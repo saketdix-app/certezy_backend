@@ -48,6 +48,16 @@ export const setStatus = handle(async (req, res) =>
   })
 )
 
+// PUT /admin/team/:id/permissions — Sub-Admin / Consultant permissions
+export const setPermissions = handle(async (req, res) =>
+  success(res, { message: 'Permissions updated', data: await service.setPermissions(req, req.params.id, req.body) })
+)
+
+// PUT /admin/team/:id/allocation — Consultant: receive leads / pause / leave / limits
+export const setAllocation = handle(async (req, res) =>
+  success(res, { message: 'Lead allocation updated', data: await service.setAllocation(req, req.params.id, req.body) })
+)
+
 // POST /admin/team/:id/privileges/super-admin-create
 export const grant = handle(async (req, res) =>
   success(res, { message: 'Privilege granted', data: await service.grantPrivilege(req, req.params.id, req.body) })

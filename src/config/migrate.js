@@ -46,6 +46,7 @@ const REQUIRED_TABLES = [
   'contacts',
   'user_permission_grants',
   'audit_logs',
+  'consultant_settings',
 ]
 
 const tableExists = async (table) => {
@@ -332,6 +333,37 @@ const STEPS = [
   {
     name: 'users.last_active_at (last sign-in / session refresh, shown on the Team page)',
     run: () => addColumnIfMissing('users', 'last_active_at', 'DATETIME NULL'),
+  },
+  {
+    name: 'admin_permissions.can_assign_courses / can_issue_certificates (2.0 per-person permissions)',
+    run: async () => {
+      const a = await addColumnIfMissing('admin_permissions', 'can_assign_courses', 'TINYINT(1) NOT NULL DEFAULT 0')
+      const b = await addColumnIfMissing('admin_permissions', 'can_issue_certificates', 'TINYINT(1) NOT NULL DEFAULT 0')
+      // Keep what sub-admins could already do: assigning needed "manage students",
+      // and issuing certificates needed no permission at all
+      if (a) await pool.query('UPDATE admin_permissions SET can_assign_courses = can_manage_students')
+      if (b) await pool.query('UPDATE admin_permissions SET can_issue_certificates = 1')
+      return a || b
+    },
+  },
+  {
+    name: 'consultant_settings table (lead allocation: pause, leave, limits)',
+    run: async () => {
+      if (await tableExists('consultant_settings')) return false
+      await pool.query(`
+        CREATE TABLE consultant_settings (
+          user_id         INT PRIMARY KEY,
+          accepting_leads TINYINT(1) NOT NULL DEFAULT 1,
+          paused_reason   VARCHAR(255) NULL,
+          on_leave_until  DATE NULL,
+          daily_limit     INT NULL,
+          open_limit      INT NULL,
+          updated_by      INT NULL,
+          updated_at      DATETIME NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
   },
   {
     name: 'user_permission_grants table (delegated privileges, e.g. super_admin.create)',

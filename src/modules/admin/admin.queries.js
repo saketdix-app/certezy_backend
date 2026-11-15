@@ -1,5 +1,6 @@
 // src/modules/admin/admin.queries.js
 
+import { STAFF_PERMISSIONS } from '../../constants.js'
 import { pool } from '../../config/db.js'
 
 // ── Get permissions by user_id ─────────────────────────────────────────────
@@ -7,50 +8,26 @@ const getPermissionsByUserId = (user_id) =>
   pool.query(`SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1`, [user_id])
 
 // ── Create permissions ─────────────────────────────────────────────────────
-const createPermissions = ({
-  user_id,
-  can_manage_courses,
-  can_manage_students,
-  can_send_discounts,
-  can_view_payments,
-  can_manage_tests,
-  created_by,
-}) =>
-  pool.query(
-    `INSERT INTO admin_permissions
-       (user_id, can_manage_courses, can_manage_students, can_send_discounts, can_view_payments, can_manage_tests, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      user_id,
-      can_manage_courses ?? 0,
-      can_manage_students ?? 0,
-      can_send_discounts ?? 0,
-      can_view_payments ?? 0,
-      can_manage_tests ?? 0,
-      created_by,
-    ]
+// Any of STAFF_PERMISSIONS may be given; the rest default to 0
+const createPermissions = ({ user_id, created_by, ...perms }) => {
+  const keys = STAFF_PERMISSIONS
+  return pool.query(
+    `INSERT INTO admin_permissions (user_id, ${keys.join(', ')}, created_by)
+     VALUES (?, ${keys.map(() => '?').join(', ')}, ?)`,
+    [user_id, ...keys.map((k) => (perms[k] ? 1 : 0)), created_by ?? null]
   )
+}
 
 // ── Update permissions ─────────────────────────────────────────────────────
-const updatePermissions = (
-  user_id,
-  { can_manage_courses, can_manage_students, can_send_discounts, can_view_payments, can_manage_tests }
-) =>
-  pool.query(
-    `UPDATE admin_permissions
-     SET can_manage_courses = ?, can_manage_students = ?,
-         can_send_discounts = ?, can_view_payments = ?,
-         can_manage_tests = ?
-     WHERE user_id = ?`,
-    [
-      can_manage_courses,
-      can_manage_students,
-      can_send_discounts,
-      can_view_payments,
-      can_manage_tests,
-      user_id,
-    ]
+// Only the keys provided change (older forms send the original five)
+const updatePermissions = (user_id, perms) => {
+  const keys = STAFF_PERMISSIONS.filter((k) => perms[k] !== undefined)
+  if (!keys.length) return Promise.resolve([{ affectedRows: 0 }])
+  return pool.query(
+    `UPDATE admin_permissions SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`,
+    [...keys.map((k) => (perms[k] ? 1 : 0)), user_id]
   )
+}
 
 // ── Delete permissions ─────────────────────────────────────────────────────
 const deletePermissions = (user_id) =>

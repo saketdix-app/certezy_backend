@@ -33,6 +33,24 @@ export const PRIVILEGES = {
   CREATE_SUPER_ADMIN: 'super_admin.create',
 }
 
+// Per-person permissions for Sub-Admins and Consultants (admin_permissions
+// columns). Super Admins and Admins have all of them. PRD §3 "Yes*" items.
+export const STAFF_PERMISSIONS = [
+  'can_assign_courses',
+  'can_send_discounts',
+  'can_issue_certificates',
+  'can_manage_students',
+  'can_view_payments',
+  'can_manage_courses',
+  'can_manage_tests',
+]
+
+// Starting permissions when someone becomes a Sub-Admin or Consultant (PRD §3 matrix)
+export const DEFAULT_PERMISSIONS = {
+  sub_admin: ['can_assign_courses', 'can_send_discounts', 'can_issue_certificates', 'can_manage_students'],
+  consultant: ['can_assign_courses', 'can_send_discounts', 'can_issue_certificates'],
+}
+
 // Enrollment.source values
 export const ENROLLMENT_SOURCES = { PURCHASE: 'purchase', ADMIN: 'admin', FREE: 'free' }
 

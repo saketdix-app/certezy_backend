@@ -17,7 +17,7 @@ router.get('/admin/stats', ...isAdmin, controller.getEnrollmentStats)
 router.get('/admin/export', ...isAdmin, controller.exportEnrollments)
 
 // Free course assignment — admins, and sub-admins with "manage students"
-const canAssign = [authenticate, role('admin', 'sub_admin'), permission('can_manage_students')]
+const canAssign = [authenticate, role('admin', 'sub_admin'), permission('can_assign_courses')]
 router.get('/admin/courses', ...canAssign, controller.getAssignableCourses)
 router.get('/admin/user/:userId', ...canAssign, controller.getUserEnrollments)
 router.post('/admin/assign', ...canAssign, validate(schemas.assignCourses), controller.assignCourses)

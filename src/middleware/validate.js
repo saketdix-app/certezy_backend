@@ -1,5 +1,6 @@
 // src/middleware/validate.js
 
+import { STAFF_PERMISSIONS } from '../constants.js'
 import Joi from 'joi'
 import {
   LESSON_TYPES,
@@ -302,6 +303,8 @@ const createSubAdminSchema = Joi.object({
   can_send_discounts: Joi.number().integer().valid(0, 1).optional(),
   can_view_payments: Joi.number().integer().valid(0, 1).optional(),
   can_manage_tests: Joi.number().integer().valid(0, 1).optional(),
+  can_assign_courses: Joi.number().integer().valid(0, 1).optional(),
+  can_issue_certificates: Joi.number().integer().valid(0, 1).optional(),
 })
 
 // ── 2.0 Team (staff accounts) ────────────────────────────────────────────
@@ -316,12 +319,23 @@ const schemas = {
     mobile: Joi.string().trim().max(20).allow('', null).optional(),
     role: staffRole.required(),
     password: reauthPassword, // your own password, for Super Admin creation
+    permissions: Joi.object(Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Joi.boolean()]))).optional(),
   }),
   changeTeamRole: Joi.object({
     role: Joi.alternatives().try(staffRole, Joi.string().valid('student')).required(),
     password: reauthPassword,
   }),
   setTeamStatus: Joi.object({ is_active: Joi.boolean().required() }),
+  teamPermissions: Joi.object(
+    Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Joi.boolean().required()]))
+  ),
+  consultantAllocation: Joi.object({
+    accepting_leads: Joi.boolean().required(),
+    paused_reason: Joi.string().trim().max(255).allow('', null).optional(),
+    on_leave_until: Joi.date().iso().allow(null).optional(),
+    daily_limit: Joi.number().integer().min(0).max(10000).allow(null).optional(),
+    open_limit: Joi.number().integer().min(0).max(100000).allow(null).optional(),
+  }),
   reauth: Joi.object({ password: reauthPassword }),
   createSubAdmin: createSubAdminSchema,
   assignCourses: Joi.object({
