@@ -47,6 +47,9 @@ const REQUIRED_TABLES = [
   'user_permission_grants',
   'audit_logs',
   'consultant_settings',
+  'leads',
+  'lead_activities',
+  'lead_follow_ups',
 ]
 
 const tableExists = async (table) => {
@@ -360,6 +363,94 @@ const STEPS = [
           open_limit      INT NULL,
           updated_by      INT NULL,
           updated_at      DATETIME NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
+    name: 'leads table (2.0 CRM: one row per prospect)',
+    run: async () => {
+      if (await tableExists('leads')) return false
+      await pool.query(`
+        CREATE TABLE leads (
+          id                INT AUTO_INCREMENT PRIMARY KEY,
+          name              VARCHAR(150) NOT NULL,
+          phone             VARCHAR(30)  NULL,
+          phone_norm        VARCHAR(20)  NULL,
+          email             VARCHAR(150) NULL,
+          email_norm        VARCHAR(150) NULL,
+          course_id         INT NULL,
+          preferred_schedule VARCHAR(150) NULL,
+          source            VARCHAR(20)  NOT NULL DEFAULT 'manual',
+          source_meta       JSON NULL,
+          platform_lead_id  VARCHAR(100) NULL,
+          consent           JSON NULL,
+          owner_id          INT NULL,
+          assigned_by       INT NULL,
+          assigned_at       DATETIME NULL,
+          stage             VARCHAR(30)  NOT NULL DEFAULT 'new',
+          prior_stage       VARCHAR(30)  NULL,
+          stage_reason      VARCHAR(255) NULL,
+          stage_changed_at  DATETIME NULL,
+          disposition_reason VARCHAR(255) NULL,
+          next_follow_up_at DATETIME NULL,
+          first_contact_at  DATETIME NULL,
+          user_id           INT NULL,
+          created_by        INT NULL,
+          created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at        DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+          archived_at       DATETIME NULL,
+          INDEX idx_leads_owner_stage (owner_id, stage),
+          INDEX idx_leads_stage (stage, created_at),
+          INDEX idx_leads_phone (phone_norm),
+          INDEX idx_leads_email (email_norm),
+          INDEX idx_leads_followup (next_follow_up_at),
+          INDEX idx_leads_user (user_id),
+          UNIQUE KEY uq_leads_platform (source, platform_lead_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
+    name: 'lead_activities table (append-only lead timeline)',
+    run: async () => {
+      if (await tableExists('lead_activities')) return false
+      await pool.query(`
+        CREATE TABLE lead_activities (
+          id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+          lead_id    INT NOT NULL,
+          actor_id   INT NULL,
+          type       VARCHAR(30) NOT NULL,
+          body       TEXT NULL,
+          meta       JSON NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_la_lead (lead_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
+    name: 'lead_follow_ups table (scheduled calls, demos, reminders)',
+    run: async () => {
+      if (await tableExists('lead_follow_ups')) return false
+      await pool.query(`
+        CREATE TABLE lead_follow_ups (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          lead_id      INT NOT NULL,
+          owner_id     INT NULL,
+          due_at       DATETIME NOT NULL,
+          type         VARCHAR(20) NOT NULL DEFAULT 'call',
+          note         VARCHAR(500) NULL,
+          status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+          outcome      VARCHAR(500) NULL,
+          completed_at DATETIME NULL,
+          created_by   INT NULL,
+          created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_fu_owner_due (owner_id, status, due_at),
+          INDEX idx_fu_lead (lead_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `)
       return true

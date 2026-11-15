@@ -418,6 +418,7 @@ const getCertificateStatus = async (user_id, course_id) => {
 }
 
 export {
+  getCompletionStatus,
   getCertificateStatus,
   issueCertificate,
   autoIssueOnCompletion,
