@@ -2,6 +2,8 @@
 
 import * as service from './leads.service.js'
 import * as distribution from './distribution.service.js'
+import * as actions from './actions.service.js'
+import { salesReport } from './sales.service.js'
 import { success } from '../../utils/response.js'
 
 const handle = (fn) => async (req, res, next) => {
@@ -67,3 +69,32 @@ export const move = handle(async (req, res) => {
   const r = await distribution.moveLeads(req, req.body)
   return success(res, { message: `${r.moved} lead${r.moved === 1 ? '' : 's'} moved`, data: r })
 })
+
+// ── CRM → LMS actions and sales (phase 5) ──
+export const studentAccount = handle(async (req, res) =>
+  success(res, { message: 'Student account ready — they were emailed a link to set a password', data: await actions.createStudentAccount(req, req.params.id) })
+)
+export const assignCourse = handle(async (req, res) =>
+  success(res, { message: 'Course assigned', data: await actions.assignCourse(req, req.params.id, req.body) })
+)
+export const sendDiscount = handle(async (req, res) =>
+  success(res, { statusCode: 201, message: 'Discount link sent', data: await actions.sendDiscount(req, req.params.id, req.body) })
+)
+export const issueCertificate = handle(async (req, res) =>
+  success(res, { statusCode: 201, message: 'Certificate issued', data: await actions.issueLeadCertificate(req, req.params.id, req.body) })
+)
+export const revokeDiscount = handle(async (req, res) =>
+  success(res, { message: 'Discount link withdrawn', data: await actions.revokeDiscount(req, req.params.id, req.body) })
+)
+export const discounts = handle(async (req, res) => success(res, { data: await actions.listDiscountLinks(req.user) }))
+export const assignments = handle(async (req, res) => success(res, { data: await actions.listAssignments(req.user) }))
+export const certificates = handle(async (req, res) => success(res, { data: await actions.listIssuedCertificates(req.user) }))
+export const sales = handle(async (req, res) => success(res, { data: await salesReport(req.user, req.query) }))
+export const settings = handle(async (req, res) =>
+  success(res, {
+    data: { max_discount_pct: await actions.getMaxDiscountPct(), round_robin_enabled: await distribution.isRoundRobinOn() },
+  })
+)
+export const saveSettings = handle(async (req, res) =>
+  success(res, { message: 'Saved', data: await actions.setMaxDiscountPct(req, req.body.max_discount_pct) })
+)

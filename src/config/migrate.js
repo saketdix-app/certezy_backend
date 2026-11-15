@@ -530,6 +530,41 @@ const STEPS = [
     },
   },
   {
+    name: 'payments.lead_id / attributed_to / attributed_at (sale credited to the lead owner at sale time)',
+    run: async () => {
+      const a = await addColumnIfMissing('payments', 'lead_id', 'INT NULL')
+      const b = await addColumnIfMissing('payments', 'attributed_to', 'INT NULL')
+      const c = await addColumnIfMissing('payments', 'attributed_at', 'DATETIME NULL')
+      if (b) await pool.query('CREATE INDEX idx_pay_attr ON payments (attributed_to, status, created_at)')
+      return a || b || c
+    },
+  },
+  {
+    name: 'discount_links.lead_id / click tracking / revocation',
+    run: async () => {
+      const a = await addColumnIfMissing('discount_links', 'lead_id', 'INT NULL')
+      const b = await addColumnIfMissing('discount_links', 'click_count', 'INT NOT NULL DEFAULT 0')
+      const c = await addColumnIfMissing('discount_links', 'first_clicked_at', 'DATETIME NULL')
+      const d = await addColumnIfMissing('discount_links', 'revoked_at', 'DATETIME NULL')
+      const e = await addColumnIfMissing('discount_links', 'revoked_by', 'INT NULL')
+      const f = await addColumnIfMissing('discount_links', 'revoke_reason', 'VARCHAR(255) NULL')
+      return a || b || c || d || e || f
+    },
+  },
+  {
+    name: 'enrollments.lead_id (course assigned from a CRM lead)',
+    run: () => addColumnIfMissing('enrollments', 'lead_id', 'INT NULL'),
+  },
+  {
+    name: 'certificates.issued_by / lead_id / override_reason (who issued it, and any eligibility override)',
+    run: async () => {
+      const a = await addColumnIfMissing('certificates', 'issued_by', 'INT NULL')
+      const b = await addColumnIfMissing('certificates', 'lead_id', 'INT NULL')
+      const c = await addColumnIfMissing('certificates', 'override_reason', 'VARCHAR(255) NULL')
+      return a || b || c
+    },
+  },
+  {
     name: 'user_permission_grants table (delegated privileges, e.g. super_admin.create)',
     run: async () => {
       if (await tableExists('user_permission_grants')) return false
