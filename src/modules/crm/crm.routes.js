@@ -38,6 +38,10 @@ router.get('/sales', ...crm, controller.sales)
 router.get('/settings', ...crm, controller.settings)
 router.put('/settings', ...crm, validate(schemas.crmSettings), controller.saveSettings)
 
+// Reports (Admins; the service checks the role)
+router.get('/reports/overview', ...crm, controller.reportOverview)
+router.get('/reports/leads.csv', ...crm, controller.reportExport)
+
 // Distribution (Admins; the service checks the role)
 router.get('/distribution', ...crm, controller.distributionGet)
 router.put('/distribution/settings', ...crm, validate(schemas.roundRobinSetting), controller.distributionSetting)
