@@ -4,6 +4,7 @@ import * as service from './leads.service.js'
 import * as distribution from './distribution.service.js'
 import * as actions from './actions.service.js'
 import { salesReport } from './sales.service.js'
+import * as reports from './reports.service.js'
 import { success } from '../../utils/response.js'
 
 const handle = (fn) => async (req, res, next) => {
@@ -98,3 +99,14 @@ export const settings = handle(async (req, res) =>
 export const saveSettings = handle(async (req, res) =>
   success(res, { message: 'Saved', data: await actions.setMaxDiscountPct(req, req.body.max_discount_pct) })
 )
+
+// ── Reports (phase 6, Admins) ──
+export const reportOverview = handle(async (req, res) => success(res, { data: await reports.overview(req.user, req.query) }))
+export const reportExport = handle(async (req, res) => {
+  const csv = await reports.exportLeads(req, req.query)
+  const day = new Date().toISOString().slice(0, 10)
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="certezy-leads-${day}.csv"`)
+  res.setHeader('Cache-Control', 'no-store')
+  return res.send(`\uFEFF${csv}`) // BOM so Excel reads ₹ and accents correctly
+})
