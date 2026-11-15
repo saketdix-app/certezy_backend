@@ -53,7 +53,7 @@ const REQUIRED_TABLES = [
   'distribution_pools',
   'distribution_pool_members',
   'crm_settings',
-  'notifications',
+  'user_notifications',
   'integrations',
   'lead_ingest_events',
   'whatsapp_messages',
@@ -513,11 +513,12 @@ const STEPS = [
     },
   },
   {
-    name: 'notifications table (in-app: new lead assigned, leads waiting…)',
+    // Own table: some databases already have an older, unrelated "notifications" table
+    name: 'user_notifications table (in-app: new lead assigned, leads waiting…)',
     run: async () => {
-      if (await tableExists('notifications')) return false
+      if (await tableExists('user_notifications')) return false
       await pool.query(`
-        CREATE TABLE notifications (
+        CREATE TABLE user_notifications (
           id         BIGINT AUTO_INCREMENT PRIMARY KEY,
           user_id    INT NOT NULL,
           type       VARCHAR(40) NOT NULL,

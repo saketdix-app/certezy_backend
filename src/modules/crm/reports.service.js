@@ -178,7 +178,7 @@ export const overview = async (actor, q = {}) => {
     [start, end, start, end, start, end, start, end, start, end, start, end]
   )
   const [[links]] = await pool.query(
-    `SELECT COUNT(*) AS generated, SUM(d.is_used = 1) AS redeemed,
+    `SELECT COUNT(*) AS links_sent, SUM(d.is_used = 1) AS redeemed,
             (SELECT COALESCE(SUM(p.amount), 0) FROM payments p JOIN discount_links d2 ON d2.id = p.discount_link_id
              WHERE p.status = 'success' AND d2.created_at >= ? AND d2.created_at < ? AND p.currency = 'USD') AS revenue_usd,
             (SELECT COALESCE(SUM(p.amount), 0) FROM payments p JOIN discount_links d2 ON d2.id = p.discount_link_id
@@ -241,9 +241,9 @@ export const overview = async (actor, q = {}) => {
     },
     lms: Object.fromEntries(Object.entries(lms).map(([k, v]) => [k, n(v)])),
     discount_links: {
-      generated: n(links.generated),
+      generated: n(links.links_sent),
       redeemed: n(links.redeemed),
-      redemption_rate: rate(n(links.redeemed), n(links.generated)),
+      redemption_rate: rate(n(links.redeemed), n(links.links_sent)),
       revenue: { USD: round1(n(links.revenue_usd)), INR: round1(n(links.revenue_inr)) },
     },
     operations: { ...Object.fromEntries(Object.entries(ops).map(([k, v]) => [k, n(v)])), round_robin_balance: balance },

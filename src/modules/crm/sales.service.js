@@ -176,7 +176,7 @@ export const salesReport = async (actor, { from, to, owner_id } = {}) => {
 
   // Discount links (generated ≠ sold)
   const [[links]] = await pool.query(
-    `SELECT COUNT(*) AS generated,
+    `SELECT COUNT(*) AS links_sent,
             SUM(d.click_count > 0) AS clicked,
             SUM(d.is_used = 1) AS redeemed,
             SUM(d.revoked_at IS NOT NULL AND d.is_used = 0) AS revoked,
@@ -205,7 +205,7 @@ export const salesReport = async (actor, { from, to, owner_id } = {}) => {
     by_source: bySource.map((r) => ({ ...r, sales: n(r.sales), amount: n(r.amount) })),
     by_consultant: byConsultant.map((r) => ({ ...r, sales: n(r.sales), amount: n(r.amount) })),
     discount_links: {
-      generated: n(links.generated),
+      generated: n(links.links_sent),
       clicked: n(links.clicked),
       redeemed: n(links.redeemed),
       expired: n(links.expired),
