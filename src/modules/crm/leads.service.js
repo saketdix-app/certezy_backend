@@ -114,7 +114,7 @@ export const findDuplicates = async ({ phone, email, source, platform_lead_id },
 }
 
 /** An existing student account with this email, to link the lead to. */
-const findStudentId = async (email) => {
+export const findStudentId = async (email) => {
   const e = normalizeEmail(email)
   if (!e) return null
   const [[row]] = await pool.query('SELECT id FROM users WHERE LOWER(email) = ? AND deleted_at IS NULL LIMIT 1', [e])

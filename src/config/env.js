@@ -59,6 +59,21 @@ const env = {
   supportPhone: 'India +91 98935 96975 | US +1 (512) 373-0152',
   // Comma-separated emails promoted to Super Admin the first time the role is
   // introduced (only while no Super Admin exists). Set on the server, not in code.
+  // 2.0 lead integrations (PRD §8). Secrets stay on the server only.
+  integrations: {
+    meta: {
+      appSecret: process.env.META_APP_SECRET || '',
+      verifyToken: process.env.META_VERIFY_TOKEN || '',
+      pageAccessToken: process.env.META_PAGE_ACCESS_TOKEN || '',
+      graphVersion: process.env.META_GRAPH_VERSION || 'v21.0',
+    },
+    linkedin: {
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
+      accessToken: process.env.LINKEDIN_ACCESS_TOKEN || '',
+      adAccountId: process.env.LINKEDIN_AD_ACCOUNT_ID || '',
+      version: process.env.LINKEDIN_API_VERSION || '202411',
+    },
+  },
   // Business timezone for 'today' in the CRM (follow-ups due today, daily limits)
   timezone: process.env.APP_TIMEZONE || 'Asia/Kolkata',
   initialSuperAdmins: (process.env.INITIAL_SUPER_ADMINS || '')
