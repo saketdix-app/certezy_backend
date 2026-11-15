@@ -1,5 +1,11 @@
 // src/middleware/validate.js
 
+import {
+  ACTIVITY_TYPES as LEAD_ACTIVITY_TYPES,
+  FOLLOW_UP_TYPES,
+  SOURCES as LEAD_SOURCES,
+  STAGES as LEAD_STAGES,
+} from '../modules/crm/crm.constants.js'
 import { STAFF_PERMISSIONS } from '../constants.js'
 import Joi from 'joi'
 import {
@@ -326,6 +332,52 @@ const schemas = {
     password: reauthPassword,
   }),
   setTeamStatus: Joi.object({ is_active: Joi.boolean().required() }),
+  // ── 2.0 CRM (leads) ──
+  createLead: Joi.object({
+    name: Joi.string().trim().min(2).max(150).required(),
+    phone: Joi.string().trim().max(30).allow('', null).optional(),
+    email: Joi.string().trim().email().max(150).lowercase().allow('', null).optional(),
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    preferred_schedule: Joi.string().trim().max(150).allow('', null).optional(),
+    source: Joi.string().valid(...LEAD_SOURCES).default('manual'),
+    source_meta: Joi.object({
+      campaign: Joi.string().max(150).allow(''),
+      ad: Joi.string().max(150).allow(''),
+      form: Joi.string().max(150).allow(''),
+      utm_source: Joi.string().max(150).allow(''),
+      utm_medium: Joi.string().max(150).allow(''),
+      utm_campaign: Joi.string().max(150).allow(''),
+      referrer: Joi.string().max(150).allow(''),
+    }).optional(),
+    platform_lead_id: Joi.string().max(100).allow('', null).optional(),
+    consent: Joi.object().optional(),
+    owner_id: Joi.number().integer().positive().allow(null).optional(),
+  }),
+  updateLead: Joi.object({
+    name: Joi.string().trim().min(2).max(150).optional(),
+    phone: Joi.string().trim().max(30).allow('', null).optional(),
+    email: Joi.string().trim().email().max(150).lowercase().allow('', null).optional(),
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    preferred_schedule: Joi.string().trim().max(150).allow('', null).optional(),
+  }),
+  changeLeadStage: Joi.object({
+    stage: Joi.string().valid(...LEAD_STAGES).required(),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+  }),
+  leadActivity: Joi.object({
+    type: Joi.string().valid(...LEAD_ACTIVITY_TYPES).required(),
+    body: Joi.string().trim().min(1).max(5000).required(),
+    outcome: Joi.string().trim().max(100).allow('', null).optional(),
+  }),
+  scheduleFollowUp: Joi.object({
+    due_at: Joi.date().iso().required(),
+    type: Joi.string().valid(...FOLLOW_UP_TYPES).default('call'),
+    note: Joi.string().trim().max(500).allow('', null).optional(),
+  }),
+  completeFollowUp: Joi.object({
+    status: Joi.string().valid('done', 'missed', 'cancelled').required(),
+    outcome: Joi.string().trim().max(500).allow('', null).optional(),
+  }),
   teamPermissions: Joi.object(
     Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Joi.boolean().required()]))
   ),
