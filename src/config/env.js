@@ -57,6 +57,12 @@ const env = {
   appName: 'CERTEZY',
   supportEmail: 'contact@certezy.com',
   supportPhone: 'India +91 98935 96975 | US +1 (512) 373-0152',
+  // Comma-separated emails promoted to Super Admin the first time the role is
+  // introduced (only while no Super Admin exists). Set on the server, not in code.
+  initialSuperAdmins: (process.env.INITIAL_SUPER_ADMINS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 
   // Database
   db: {

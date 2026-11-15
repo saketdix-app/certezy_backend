@@ -10,6 +10,8 @@ import {
   sendCourseAssignedMail,
   sendContactReplyMail,
   sendPasswordResetMail,
+  sendStaffInviteMail,
+  sendSecurityNoticeMail,
 } from '../utils/mailer.js'
 
 const connection = {
@@ -47,6 +49,14 @@ const worker = new Worker(
 
       case 'contactReply':
         await sendContactReplyMail(data.to, data)
+        break
+
+      case 'staffInvite':
+        await sendStaffInviteMail(data.to, data)
+        break
+
+      case 'securityNotice':
+        await sendSecurityNoticeMail(data.to, data)
         break
 
       case 'passwordReset':

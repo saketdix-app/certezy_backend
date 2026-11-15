@@ -54,7 +54,15 @@ const sendContactReplyJob = (data) => addEmailJob('contactReply', data)
 const sendPasswordResetJob = (data) => addEmailJob('passwordReset', data)
 // data: { to, name, resetUrl?, minutes?, provider? }
 
+// 2.0: staff invitation (set-password link) and Super Admin security notices
+const sendStaffInviteJob = (data) => addEmailJob('staffInvite', data)
+// data: { to, name, roleLabel, invitedBy, setUrl, hours }
+const sendSecurityNoticeJob = (data) => addEmailJob('securityNotice', data)
+// data: { to, name, title, lines }
+
 export {
+  sendStaffInviteJob,
+  sendSecurityNoticeJob,
   sendPasswordResetJob,
   sendWelcomeJob,
   sendDiscountJob,

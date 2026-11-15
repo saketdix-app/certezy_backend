@@ -34,7 +34,7 @@ export const softDeleteUser = async (id, adminId) => {
   if (!user || user.purged_at) throw fail(404, 'User not found')
   if (user.deleted_at) throw fail(409, 'This user is already deleted')
   if (Number(id) === Number(adminId)) throw fail(400, "You can't delete your own account")
-  if (user.role === 'admin') throw fail(403, 'Admin accounts cannot be deleted here')
+  if (['admin', 'super_admin'].includes(user.role)) throw fail(403, 'Admin accounts cannot be deleted here')
 
   await pool.query(
     `UPDATE users

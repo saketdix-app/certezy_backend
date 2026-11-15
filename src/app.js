@@ -28,6 +28,7 @@ import geoRoutes from './modules/geo.routes.js'
 import certificateRoutes from './modules/certificates/certificates.routes.js'
 import reviewRoutes from './modules/reviews/reviews.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
+import teamRoutes from './modules/team/team.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
 import importRoutes from './modules/imports/imports.routes.js'
@@ -51,6 +52,7 @@ const ROUTES = [
   ['/discounts', discountRoutes],
   ['/certificates', certificateRoutes],
   ['/reviews', reviewRoutes],
+  ['/admin/team', teamRoutes],
   ['/admin', adminRoutes],
   ['/contact', contactRoutes],
   ['/upload', uploadRoutes],

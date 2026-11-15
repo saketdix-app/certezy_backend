@@ -224,7 +224,46 @@ const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) =
   })
 }
 
+// 2.0 staff invitation: set a password to activate the account (no password is emailed)
+const sendStaffInviteMail = (to, { name, roleLabel, invitedBy, setUrl, hours = 72 }) =>
+  sendMail({
+    to,
+    subject: `You've been invited to CERTEZY as ${roleLabel}`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p>${escapeHtml(invitedBy || 'A CERTEZY administrator')} has created a <b>${escapeHtml(roleLabel)}</b>
+          account for you on CERTEZY. Set your password to activate it.</p>
+        <p style="margin:22px 0">
+          <a href="${setUrl}" style="display:inline-block;background:#3282B8;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">Set my password</a>
+        </p>
+        <p style="font-size:13px;color:#64748b">The link works once and expires in ${hours} hours. If you weren't
+          expecting this, ignore this email or reply to let us know.</p>
+        <p style="font-size:12px;color:#94a3b8">If the button doesn't work, open: ${setUrl}</p>
+        <p style="margin-top:20px">— CERTEZY E-Learning Pvt. Ltd.</p>
+      </div>
+    `,
+  })
+
+// 2.0 security notice to Super Admins (new Super Admin, privilege granted/revoked)
+const sendSecurityNoticeMail = (to, { name, title, lines = [] }) =>
+  sendMail({
+    to,
+    subject: `CERTEZY security notice: ${title}`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p><b>${escapeHtml(title)}</b></p>
+        <ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
+        <p style="font-size:13px;color:#64748b">You're receiving this because you are a CERTEZY Super Admin.
+          Review it in Admin → Team → Audit log. If this wasn't expected, revoke the access right away.</p>
+      </div>
+    `,
+  })
+
 export {
+  sendStaffInviteMail,
+  sendSecurityNoticeMail,
   sendPasswordResetMail,
   sendWelcomeMail,
   sendDiscountMail,
