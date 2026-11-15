@@ -263,7 +263,7 @@ const STATIC_PAGES = {
 // Private or one-off pages: rendered by the app, kept out of search results
 const NOINDEX = [
   /^\/(login|register|change-password|checkout|forgot-password|reset-password)(\/|$)/,
-  /^\/(student|admin|oauth|payment|offer)(\/|$)/,
+  /^\/(student|admin|consultant|oauth|payment|offer)(\/|$)/,
   /^\/verify\/.+/,
 ]
 
@@ -502,6 +502,7 @@ export const robotsTxt = () =>
     'Allow: /',
     'Disallow: /admin',
     'Disallow: /student',
+    'Disallow: /consultant',
     'Disallow: /checkout',
     'Disallow: /payment/',
     'Disallow: /offer/',
@@ -524,6 +525,7 @@ export const robotsTxt = () =>
       'Allow: /',
       'Disallow: /admin',
       'Disallow: /student',
+      'Disallow: /consultant',
       'Disallow: /checkout',
       'Disallow: /api/',
       '',
