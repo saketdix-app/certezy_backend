@@ -54,7 +54,7 @@ const env = {
   NODE_ENV,
   isProd,
   // Brand and contact details are fixed so a stale .env can't misspell them
-  appName: 'Certezy',
+  appName: 'CERTEZY',
   supportEmail: 'contact@certezy.com',
   supportPhone: 'India +91 98935 96975 | US +1 (512) 373-0152',
 

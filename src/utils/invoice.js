@@ -56,7 +56,7 @@ const generateInvoice = ({
         .moveDown(2)
 
       // Company name
-      doc.fontSize(16).font('Helvetica-Bold').text('Certezy').moveDown(0.3)
+      doc.fontSize(16).font('Helvetica-Bold').text('CERTEZY').moveDown(0.3)
 
       doc.fontSize(10).font('Helvetica').text('Online Learning Platform').moveDown(2)
 

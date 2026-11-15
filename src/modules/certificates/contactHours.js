@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto'
 
-// Off until Certezy is a PMI Authorized Training Partner: a self-made "PDU ID"
+// Off until CERTEZY is a PMI Authorized Training Partner: a self-made "PDU ID"
 // reads as a PMI-issued code. Only an ATP gets real PDU activity IDs from PMI.
 export const SHOW_PDU_ID = false
 

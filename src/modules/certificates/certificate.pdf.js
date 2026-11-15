@@ -1,12 +1,12 @@
 // src/modules/certificates/certificate.pdf.js
-// Draws the Certezy E-Learning Pvt. Ltd. certificate of completion (A4 landscape).
+// Draws the CERTEZY E-Learning Pvt. Ltd. certificate of completion (A4 landscape).
 // Pure rendering — returns a PDF Buffer; the service uploads it.
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import PDFDocument from 'pdfkit'
 
-export const ISSUER = 'Certezy E-Learning Pvt. Ltd.'
+export const ISSUER = 'CERTEZY E-Learning Pvt. Ltd.'
 
 const LOGO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/certezy-logo.png')
 
@@ -257,8 +257,11 @@ export const renderCertificatePdf = ({
 
     seal(doc, cx, footY + 18)
 
-    doc.fillColor(NAVY).font('Times-BoldItalic').fontSize(16)
-    doc.text(ISSUER, rightX, footY + 1, { width: colW, align: 'center' })
+    // One line above the signature rule: shrink the issuer name until it fits
+    doc.fillColor(NAVY).font('Times-BoldItalic')
+    let issuerSize = 16
+    while (issuerSize > 11 && doc.fontSize(issuerSize).widthOfString(ISSUER) > colW + 20) issuerSize -= 0.5
+    doc.text(ISSUER, rightX - 10, footY + 1 + (16 - issuerSize) / 2, { width: colW + 20, align: 'center', lineBreak: false })
     doc
       .moveTo(rightX + 20, footY + 22)
       .lineTo(rightX + colW - 20, footY + 22)

@@ -364,7 +364,7 @@ const paypalCreateOrder = async (user_id, body, region) => {
         paymentSource: {
           paypal: {
             experienceContext: {
-              brandName: 'Certezy',
+              brandName: 'CERTEZY',
               returnUrl: `${env.frontendUrl}/payment/paypal/return`,
               cancelUrl: `${env.frontendUrl}/payment/paypal/cancel`,
               userAction: PaypalExperienceUserAction.PayNow,

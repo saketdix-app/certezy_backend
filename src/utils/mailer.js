@@ -75,11 +75,11 @@ const sendDiscountMail = (
   const pct = discountPct ? `${Math.round(discountPct)}% off` : 'Special price'
   return sendMail({
     to,
-    subject: `${pct}: ${courseTitle} — your Certezy offer`,
+    subject: `${pct}: ${courseTitle} — your CERTEZY offer`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
         <div style="background:#0f2545;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
-          <p style="margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd">Certezy E-Learning</p>
+          <p style="margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd">CERTEZY E-Learning</p>
           <h2 style="margin:6px 0 0;font-size:22px">${name ? `Hi ${name}, ` : ''}you have a special offer</h2>
         </div>
         <div style="border:1px solid #e2e8f0;border-top:0;padding:24px;border-radius:0 0 12px 12px">
@@ -169,13 +169,13 @@ const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, 
   sendMail({
     to,
     replyTo: env.supportEmail,
-    subject: `Re: ${subject || 'Your message'} — Certezy`,
+    subject: `Re: ${subject || 'Your message'} — CERTEZY`,
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;line-height:1.6">
         <p>Hi ${escapeHtml(name || 'there')},</p>
         <div style="font-size:15px">${escapeHtml(reply)}</div>
-        <p style="margin-top:20px">Best regards,<br>${escapeHtml(adminName || 'The Certezy team')}<br>
-          <span style="color:#64748b">Certezy E-Learning Pvt. Ltd. · ${env.supportEmail}</span></p>
+        <p style="margin-top:20px">Best regards,<br>${escapeHtml(adminName || 'The CERTEZY team')}<br>
+          <span style="color:#64748b">CERTEZY E-Learning Pvt. Ltd. · ${env.supportEmail}</span></p>
         <div style="margin-top:24px;padding:12px 16px;border-left:3px solid #cbd5e1;color:#64748b;font-size:13px">
           <p style="margin:0 0 6px">Your message${
             receivedAt ? ` of ${new Date(receivedAt).toUTCString().replace(/ GMT$/, ' UTC')}` : ''
@@ -196,8 +196,8 @@ const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) =
     ? `
         <p>${
           setting
-            ? `Your Certezy account signs in with ${providerName}. Use the button below to also set a password, so you can sign in with your email and password too.`
-            : 'We received a request to reset the password for your Certezy account.'
+            ? `Your CERTEZY account signs in with ${providerName}. Use the button below to also set a password, so you can sign in with your email and password too.`
+            : 'We received a request to reset the password for your CERTEZY account.'
         }</p>
         <p style="margin:22px 0">
           <a href="${resetUrl}" style="display:inline-block;background:#3282B8;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">${setting ? 'Set my password' : 'Reset my password'}</a>
@@ -206,19 +206,19 @@ const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) =
           If you didn't ask for this, ignore this email — your password stays the same.</p>
         <p style="font-size:12px;color:#94a3b8">If the button doesn't work, open: ${resetUrl}</p>`
     : `
-        <p>We received a request to reset the password for your Certezy account.</p>
-        <p>Your account signs in with <b>${providerName}</b>, so there is no Certezy password to reset.
+        <p>We received a request to reset the password for your CERTEZY account.</p>
+        <p>Your account signs in with <b>${providerName}</b>, so there is no CERTEZY password to reset.
           Go to <a href="${env.frontendUrl}/login">${env.frontendUrl.replace(/^https?:\/\//, '')}/login</a>
           and choose <b>Continue with ${providerName}</b>.</p>
         <p style="font-size:13px;color:#64748b">If you didn't ask for this, you can ignore this email.</p>`
   return sendMail({
     to,
-    subject: 'Reset your Certezy password',
+    subject: 'Reset your CERTEZY password',
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
         <p>Hi ${escapeHtml(name || 'there')},</p>
         ${body}
-        <p style="margin-top:20px">— Certezy E-Learning Pvt. Ltd.</p>
+        <p style="margin-top:20px">— CERTEZY E-Learning Pvt. Ltd.</p>
       </div>
     `,
   })
