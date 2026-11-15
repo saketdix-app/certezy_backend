@@ -78,6 +78,8 @@ const updatePermissions = async (user_id, body) => {
     can_send_discounts,
     can_view_payments,
     can_manage_tests,
+    can_assign_courses: body.can_assign_courses,
+    can_issue_certificates: body.can_issue_certificates,
   })
 
   return await getPermissions(user_id)
@@ -118,6 +120,9 @@ const createSubAdmin = async (created_by, body) => {
     can_send_discounts: can_send_discounts ?? 0,
     can_view_payments: can_view_payments ?? 0,
     can_manage_tests: can_manage_tests ?? 0,
+    // 2.0 permissions: same access the older form implied
+    can_assign_courses: body.can_assign_courses ?? can_manage_students ?? 0,
+    can_issue_certificates: body.can_issue_certificates ?? 1,
     created_by,
   })
 

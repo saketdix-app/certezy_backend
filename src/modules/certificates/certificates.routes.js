@@ -3,6 +3,7 @@
 import { Router } from 'express'
 import * as controller from './certificates.controller.js'
 import authenticate from '../../middleware/auth.js'
+import permission from '../../middleware/permission.js'
 import role from '../../middleware/role.js'
 import { LEARNER_ROLES } from '../../constants.js'
 
@@ -17,9 +18,9 @@ router.get('/status/:courseId', authenticate, role(...LEARNER_ROLES), controller
 router.post('/claim/:courseId', authenticate, role(...LEARNER_ROLES), controller.claimCertificate)
 
 // ─── ADMIN ────────────────────────────────────────────────────
-router.post('/issue', authenticate, role('admin', 'sub_admin'), controller.adminIssueCertificate)
+router.post('/issue', authenticate, role('admin', 'sub_admin'), permission('can_issue_certificates'), controller.adminIssueCertificate)
 router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllCertificates)
 router.delete('/:id', authenticate, role('admin'), controller.revokeCertificate)
-router.put('/:id', authenticate, role('admin', 'sub_admin'), controller.regenerateCertificate)
+router.put('/:id', authenticate, role('admin', 'sub_admin'), permission('can_issue_certificates'), controller.regenerateCertificate)
 
 export default router

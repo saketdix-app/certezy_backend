@@ -14,7 +14,7 @@
 
 import bcrypt from 'bcryptjs'
 import { pool } from '../../config/db.js'
-import { PRIVILEGES, STAFF_ROLES } from '../../constants.js'
+import { DEFAULT_PERMISSIONS, PRIVILEGES, STAFF_PERMISSIONS, STAFF_ROLES } from '../../constants.js'
 import { audit } from '../../utils/audit.js'
 import { issuePasswordLink } from '../auth/passwordReset.js'
 import { sendSecurityNoticeJob, sendStaffInviteJob } from '../../jobs/emailQueue.js'
@@ -131,8 +131,12 @@ export const listTeam = async ({ role, status, search }) => {
   const [rows] = await pool.query(
     `SELECT u.id, u.name, u.email, u.mobile, u.role, u.is_active, u.created_at, u.last_active_at,
             (u.password IS NULL AND u.oauth_provider = 'local') AS invite_pending,
-            g.granted_at AS sa_grant_at, gu.name AS sa_granted_by
+            g.granted_at AS sa_grant_at, gu.name AS sa_granted_by,
+            ${STAFF_PERMISSIONS.map((k) => `p.${k}`).join(', ')},
+            cs.accepting_leads, cs.paused_reason, cs.on_leave_until, cs.daily_limit, cs.open_limit
      FROM users u
+     LEFT JOIN admin_permissions p ON p.user_id = u.id
+     LEFT JOIN consultant_settings cs ON cs.user_id = u.id
      LEFT JOIN user_permission_grants g
        ON g.user_id = u.id AND g.permission_key = ? AND g.revoked_at IS NULL
      LEFT JOIN users gu ON gu.id = g.granted_by
@@ -141,12 +145,117 @@ export const listTeam = async ({ role, status, search }) => {
     [PRIVILEGES.CREATE_SUPER_ADMIN, ...values, ...STAFF_ROLES]
   )
   return rows.map((r) => ({
-    ...r,
+    ...withoutPermissionColumns(r),
+    permissions: permissionsFor(r.role, r),
+    allocation: r.role === 'consultant' ? allocationFrom(r) : null,
     is_active: Boolean(r.is_active),
     invite_pending: Boolean(r.invite_pending),
     can_create_super_admin: r.role === SUPER || Boolean(r.sa_grant_at),
     super_admin_grant: r.sa_grant_at ? { granted_at: r.sa_grant_at, granted_by: r.sa_granted_by } : null,
   }))
+}
+
+// ── Per-person permissions & consultant allocation (2.0 phase 2) ─────────
+
+const withoutPermissionColumns = (row) => {
+  const out = { ...row }
+  for (const k of [...STAFF_PERMISSIONS, 'accepting_leads', 'paused_reason', 'on_leave_until', 'daily_limit', 'open_limit'])
+    delete out[k]
+  return out
+}
+
+/** Effective permissions: Super Admins/Admins have all; others per their row. */
+const permissionsFor = (role, row) =>
+  Object.fromEntries(
+    STAFF_PERMISSIONS.map((k) => [k, role === SUPER || role === 'admin' ? true : Boolean(row?.[k])])
+  )
+
+const allocationFrom = (row) => {
+  const onLeave = row?.on_leave_until && new Date(row.on_leave_until) >= new Date(new Date().toDateString())
+  const accepting = row?.accepting_leads == null ? true : Boolean(row.accepting_leads)
+  return {
+    accepting_leads: accepting,
+    paused_reason: row?.paused_reason ?? null,
+    on_leave_until: row?.on_leave_until ?? null,
+    daily_limit: row?.daily_limit ?? null,
+    open_limit: row?.open_limit ?? null,
+    // What Round Robin (phase 4) will see
+    state: !accepting ? 'paused' : onLeave ? 'on_leave' : 'receiving',
+  }
+}
+
+/** Make sure a Sub-Admin/Consultant has a permissions row (role defaults). */
+const ensurePermissions = async (userId, role, createdBy, overrides) => {
+  if (!DEFAULT_PERMISSIONS[role]) return
+  const [[existing]] = await pool.query('SELECT id FROM admin_permissions WHERE user_id = ? LIMIT 1', [userId])
+  if (existing) return
+  const perms = Object.fromEntries(
+    STAFF_PERMISSIONS.map((k) => [k, overrides?.[k] ?? DEFAULT_PERMISSIONS[role].includes(k)])
+  )
+  await pool.query(
+    `INSERT INTO admin_permissions (user_id, ${STAFF_PERMISSIONS.join(', ')}, created_by)
+     VALUES (?, ${STAFF_PERMISSIONS.map(() => '?').join(', ')}, ?)`,
+    [userId, ...STAFF_PERMISSIONS.map((k) => (perms[k] ? 1 : 0)), createdBy]
+  )
+}
+
+export const setPermissions = async (req, id, perms) => {
+  const actor = req.user
+  const target = await getUser(id)
+  if (!target || target.deleted_at) throw fail(404, 'User not found')
+  if (!DEFAULT_PERMISSIONS[target.role]) {
+    throw fail(400, 'Permissions are set for Sub-Admins and Consultants; Admins and Super Admins have them all')
+  }
+  if (Number(target.id) === Number(actor.id) || !canManage(actor, target)) {
+    throw await denied(req, 'permissions.update', target, "You can't change this person's permissions")
+  }
+
+  await ensurePermissions(target.id, target.role, actor.id)
+  const [[before]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [target.id])
+  await pool.query(
+    `UPDATE admin_permissions SET ${STAFF_PERMISSIONS.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`,
+    [...STAFF_PERMISSIONS.map((k) => (perms[k] ? 1 : 0)), target.id]
+  )
+  const changes = STAFF_PERMISSIONS.filter((k) => Boolean(before?.[k]) !== Boolean(perms[k])).map((k) => ({
+    permission: k,
+    to: Boolean(perms[k]),
+  }))
+  await audit(req, { action: 'permissions.update', targetType: 'user', targetId: target.id, details: { changes } })
+  return getMember(target.id)
+}
+
+export const setAllocation = async (req, id, body) => {
+  const actor = req.user
+  const target = await getUser(id)
+  if (!target || target.deleted_at) throw fail(404, 'User not found')
+  if (target.role !== 'consultant') throw fail(400, 'Lead allocation settings are for Consultants')
+  if (!canManage(actor, target)) throw await denied(req, 'allocation.update', target, "You can't manage this consultant")
+
+  const values = {
+    accepting_leads: body.accepting_leads ? 1 : 0,
+    paused_reason: body.accepting_leads ? null : body.paused_reason?.trim() || null,
+    on_leave_until: body.on_leave_until ? new Date(body.on_leave_until).toISOString().slice(0, 10) : null,
+    daily_limit: body.daily_limit ?? null,
+    open_limit: body.open_limit ?? null,
+  }
+  const [[before]] = await pool.query('SELECT * FROM consultant_settings WHERE user_id = ?', [target.id])
+  await pool.query(
+    `INSERT INTO consultant_settings
+       (user_id, accepting_leads, paused_reason, on_leave_until, daily_limit, open_limit, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
+     ON DUPLICATE KEY UPDATE accepting_leads = VALUES(accepting_leads), paused_reason = VALUES(paused_reason),
+       on_leave_until = VALUES(on_leave_until), daily_limit = VALUES(daily_limit), open_limit = VALUES(open_limit),
+       updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)`,
+    [target.id, values.accepting_leads, values.paused_reason, values.on_leave_until, values.daily_limit, values.open_limit, actor.id]
+  )
+  const action =
+    Boolean(before?.accepting_leads ?? 1) !== Boolean(values.accepting_leads)
+      ? values.accepting_leads
+        ? 'allocation.resume'
+        : 'allocation.pause'
+      : 'allocation.update'
+  await audit(req, { action, targetType: 'user', targetId: target.id, details: values })
+  return getMember(target.id)
 }
 
 /** One member with their privilege history (grants, revocations). */
@@ -162,8 +271,16 @@ export const getMember = async (id) => {
      WHERE g.user_id = ? ORDER BY g.id DESC`,
     [id]
   )
+  const [[perms]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [id])
+  const [[alloc]] = await pool.query('SELECT * FROM consultant_settings WHERE user_id = ? LIMIT 1', [id])
   const { password, ...safe } = user
-  return { ...safe, is_active: Boolean(user.is_active), grants }
+  return {
+    ...safe,
+    is_active: Boolean(user.is_active),
+    grants,
+    permissions: permissionsFor(user.role, perms),
+    allocation: user.role === 'consultant' ? allocationFrom(alloc) : null,
+  }
 }
 
 /** What the signed-in staff member may do (drives the Team page buttons). */
@@ -175,12 +292,14 @@ export const myCapabilities = async (actor) => {
     can_create_roles: roles,
     can_grant_privileges: actor.role === SUPER,
     can_view_audit: actor.role === SUPER || actor.role === 'admin',
+    permission_keys: STAFF_PERMISSIONS,
+    default_permissions: DEFAULT_PERMISSIONS,
   }
 }
 
 // ── Create (invite) ───────────────────────────────────────────────────────
 
-export const createMember = async (req, { name, email, mobile, role, password }) => {
+export const createMember = async (req, { name, email, mobile, role, password, permissions: permissionOverrides }) => {
   const actor = req.user
   const action = role === SUPER ? 'super_admin.create' : 'user.create'
   if (!(await canAssignRole(actor, role))) {
@@ -211,6 +330,7 @@ export const createMember = async (req, { name, email, mobile, role, password })
     [String(name).trim(), normalized, mobile || null, role]
   )
   const id = result.insertId
+  await ensurePermissions(id, role, actor.id, permissionOverrides)
 
   // Secure invitation: the person sets their own password (no password is emailed)
   const setUrl = await issuePasswordLink(id, INVITE_HOURS * 60)
@@ -288,6 +408,7 @@ export const changeRole = async (req, id, { role, password }) => {
   }
 
   await pool.query('UPDATE users SET role = ? WHERE id = ?', [role, target.id])
+  await ensurePermissions(target.id, role, actor.id)
   // A delegated privilege belongs to the Admin role: drop it when they change role
   if (target.role === 'admin') {
     await pool.query(
