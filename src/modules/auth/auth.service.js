@@ -199,7 +199,7 @@ const updateUserStatus = async (id, is_active) => {
 }
 
 // International mobile numbers in E.164 form: "+" + country code + number,
-// 8–15 digits in all (e.g. +919893596975, +18665589561)
+// 8–15 digits in all (e.g. +919893596975, +15123730152)
 const normalizeMobile = (value) => {
   if (value == null || String(value).trim() === '') return null
   const digits = String(value).replace(/[\s\-().]/g, '')
