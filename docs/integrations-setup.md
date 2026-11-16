@@ -38,10 +38,18 @@ Business account.
 **Then, in Admin → Integrations → Meta (Super Admin):**
 5. **Change keys** → paste App ID and App secret → save.
 6. **Connect with Facebook** → confirm your password → sign in → tick your
-   Page and allow everything asked. CERTEZY then saves a Page token that
-   doesn't expire, creates the webhook verify token, subscribes the Page to
-   lead events and points the app's webhook at CERTEZY. The card lists each
-   step; anything that failed says why.
+   Page and allow everything asked. CERTEZY then saves the Page token,
+   creates the webhook verify token, subscribes the Page to lead events and
+   points the app's webhook at CERTEZY. The card lists each step; anything
+   that failed says why.
+
+   The Page token has no expiry date, but Facebook's access to your data
+   lapses about 90 days after the last sign-in (and immediately if the
+   person who connected changes their Facebook password or removes the
+   app). CERTEZY checks with Facebook every few hours; from 7 days before,
+   Admins see a warning at the top of the admin portal and a daily
+   notification. Click **Reconnect Facebook** to renew. LinkedIn works the
+   same way when it can't renew its token automatically.
 7. **Test connection**, switch Meta **on**, map each **form ID** (Meta
    Business Suite → Instant forms) to its course.
 8. Test: <https://developers.facebook.com/tools/lead-ads-testing> → create a

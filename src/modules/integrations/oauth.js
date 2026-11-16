@@ -6,7 +6,7 @@
 // the App ID + App secret / Client ID + Client secret on the card.
 // After that a Super Admin clicks Connect, signs in, picks the Page or ad
 // account, and we do the rest:
-//   Meta     → long-lived Page token (doesn't expire), webhook verify token,
+//   Meta     → long-lived Page token, webhook verify token,
 //              Page subscribed to the app, app webhook pointed at CERTEZY.
 //   LinkedIn → access token (+ refresh token, renewed automatically before it
 //              expires), ad account ID.
@@ -165,7 +165,7 @@ const finishMeta = async (req, page, fetchImpl) => {
     },
     req.user.id
   )
-  const steps = [{ ok: true, label: `Page "${page.name}" connected (its token doesn't expire)` }]
+  const steps = [{ ok: true, label: `Page "${page.name}" connected` }]
 
   const sub = await metaPost(`${encodeURIComponent(page.id)}/subscribed_apps`, { subscribed_fields: 'leadgen', access_token: page.token }, fetchImpl)
   steps.push(sub.ok ? { ok: true, label: 'Page set to send new leads to the app' } : { ok: false, label: `Page subscription: ${sub.error}` })
@@ -184,6 +184,12 @@ const finishMeta = async (req, page, fetchImpl) => {
     fetchImpl
   )
   steps.push(hook.ok ? { ok: true, label: 'Webhook pointed at CERTEZY' } : { ok: false, label: `Webhook: ${hook.error}` })
+  const health = await checkMeta({ fetchImpl }).catch(() => null)
+  if (health === 'ok') {
+    const h = (await getCredentials('meta', { fresh: true })).connection?.health
+    const ends = [h?.expires_at, h?.data_access_expires_at].filter(Boolean).sort()[0]
+    if (ends) steps.push({ ok: true, label: `Facebook allows access until ${new Date(ends).toDateString()} — you'll be reminded a week before` })
+  }
   return { source: 'meta', name: page.name, steps }
 }
 
@@ -349,13 +355,103 @@ export const renewLinkedIn = async ({ fetchImpl = fetch, now = Date.now() } = {}
       console.error('LinkedIn token renewal failed:', err.message)
     }
   }
-  if (conn.warned_on === today()) return 'warned'
-  await notify(await managerIds(), {
-    type: 'integration',
-    title: daysLeft > 0 ? `LinkedIn connection ends in ${Math.max(1, Math.ceil(daysLeft))} day(s)` : 'LinkedIn connection has ended',
-    body: 'A Super Admin needs to click Connect with LinkedIn again in Admin → Integrations',
-    link: '/admin/integrations',
-  })
-  await setCredentialValues('linkedin', { connection: JSON.stringify({ ...conn, warned_on: today() }) })
-  return 'warned'
+  return 'not_renewed' // the admin header + daily notification take it from here (integrationAlerts)
+}
+
+// ── Facebook health (queue worker, every few hours) ───────────────────────
+// A Page token from Connect has no expiry date, but Facebook's *data access*
+// for it lapses about 90 days after the last sign-in, and any token stops
+// working if the person who connected changes their password or removes the
+// app. Check with Facebook what it says, and keep the answer for the alerts.
+
+const iso = (secs) => (Number(secs) > 0 ? new Date(Number(secs) * 1000).toISOString() : null)
+
+export const checkMeta = async ({ fetchImpl = fetch } = {}) => {
+  const c = await getCredentials('meta', { fresh: true })
+  if (!c.pageAccessToken) return 'not_connected'
+  const health = { checked_at: new Date().toISOString() }
+  try {
+    if (c.appId && c.appSecret) {
+      // debug_token through the batch API so no token appears in a URL
+      const res = await fetchImpl(`${graph()}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          access_token: `${c.appId}|${c.appSecret}`,
+          batch: JSON.stringify([{ method: 'GET', relative_url: `debug_token?input_token=${encodeURIComponent(c.pageAccessToken)}` }]),
+        }),
+      })
+      const first = (await jsonOf(res))?.[0]
+      if (!res.ok || first?.code !== 200) throw new Error(`debug_token failed (${first?.code ?? res.status})`)
+      const d = JSON.parse(first.body ?? '{}').data ?? {}
+      Object.assign(health, {
+        valid: Boolean(d.is_valid),
+        expires_at: iso(d.expires_at),
+        data_access_expires_at: iso(d.data_access_expires_at),
+        error: d.is_valid ? null : (d.error?.message ?? 'Facebook says the token is no longer valid'),
+      })
+    } else {
+      const res = await fetchImpl(`${graph()}/me?fields=id`, { headers: { Authorization: `Bearer ${c.pageAccessToken}` } })
+      const d = await jsonOf(res)
+      Object.assign(health, { valid: res.ok, error: res.ok ? null : errText(d, res.status) })
+    }
+  } catch (err) {
+    return `unreachable: ${err.message}` // network trouble: keep the last answer
+  }
+  await setCredentialValues('meta', { connection: JSON.stringify({ ...(c.connection ?? { manual: true }), health }) })
+  return health.valid ? 'ok' : 'invalid'
+}
+
+const WARN_DAYS = 7
+const daysUntil = (when, now) => (new Date(when).getTime() - now) / 86400e3
+const plural = (n) => `${n} day${n === 1 ? '' : 's'}`
+
+/**
+ * Connection problems for the admin header: expired / expiring within 7 days /
+ * stopped working. Only for integrations that are switched on. No tokens.
+ */
+export const integrationAlerts = async ({ now = Date.now() } = {}) => {
+  const { getIntegration } = await import('./ingest.service.js')
+  const out = []
+
+  const li = await getCredentials('linkedin')
+  if (li.accessToken && li.connection?.expires_at && (await getIntegration('linkedin')).enabled) {
+    const days = daysUntil(li.connection.expires_at, now)
+    const renews = li.connection.auto_renew && li.refreshToken
+    if (days <= 0) {
+      out.push({ source: 'linkedin', level: 'error', expires_at: li.connection.expires_at, message: 'The LinkedIn connection has expired, so LinkedIn leads have stopped. Click Connect with LinkedIn again.' })
+    } else if (days <= WARN_DAYS && !(renews && days > 2)) {
+      // Auto-renewal normally happens in the last week; only warn if it hasn't by the last 2 days
+      out.push({ source: 'linkedin', level: 'warning', expires_at: li.connection.expires_at, message: `The LinkedIn connection expires in ${plural(Math.ceil(days))}. Click Connect with LinkedIn again before then.` })
+    }
+  }
+
+  const m = await getCredentials('meta')
+  const h = m.connection?.health
+  if (m.pageAccessToken && h && (await getIntegration('meta')).enabled) {
+    const ends = [h.expires_at, h.data_access_expires_at].filter(Boolean).sort()[0]
+    if (h.valid === false) {
+      out.push({ source: 'meta', level: 'error', message: `The Facebook connection has stopped working (${h.error}). Click Reconnect Facebook.` })
+    } else if (ends && daysUntil(ends, now) <= 0) {
+      out.push({ source: 'meta', level: 'error', expires_at: ends, message: "Facebook's access to your leads has ended. Click Reconnect Facebook." })
+    } else if (ends && daysUntil(ends, now) <= WARN_DAYS) {
+      out.push({ source: 'meta', level: 'warning', expires_at: ends, message: `Facebook's access to your leads ends in ${plural(Math.ceil(daysUntil(ends, now)))}. Click Reconnect Facebook before then.` })
+    }
+  }
+  return out
+}
+
+/** Once a day, put each alert in the Admins' notifications too. */
+export const notifyIntegrationAlerts = async () => {
+  for (const a of await integrationAlerts()) {
+    const c = await getCredentials(a.source, { fresh: true })
+    if (!c.connection || c.connection.alerted_on === today()) continue
+    await notify(await managerIds(), {
+      type: 'integration',
+      title: a.source === 'meta' ? 'Facebook connection needs attention' : 'LinkedIn connection needs attention',
+      body: a.message,
+      link: '/admin/integrations',
+    })
+    await setCredentialValues(a.source, { connection: JSON.stringify({ ...c.connection, alerted_on: today() }) })
+  }
 }
