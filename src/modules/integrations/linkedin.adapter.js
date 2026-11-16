@@ -128,3 +128,41 @@ export const mapResponse = (r, questions = {}, config = {}) => {
     submitted_at_ms: Number(r?.submittedAt) || null,
   }
 }
+
+// ── Campaign names ────────────────────────────────────────────────────────
+// Responses only carry "urn:li:sponsoredCampaign:229559253". The name comes
+// from GET /adAccounts/{account}/adCampaigns/{id}, which needs the app's
+// Advertising API access (r_ads). Names are cached; a failed lookup is not
+// retried for 6 hours.
+
+const campaignNames = new Map()
+const campaignMisses = new Map()
+const MISS_RETRY_MS = 6 * 60 * 60 * 1000
+
+/** "urn:li:sponsoredCampaign:229559253" or "LinkedIn campaign 229559253" → "229559253"; a name → null. */
+export const campaignIdOf = (value) => String(value ?? '').match(/^(?:urn:li:sponsoredCampaign:|LinkedIn campaign )(\d+)$/)?.[1] ?? null
+
+/** The campaign's name from LinkedIn, or null if it can't be read right now. */
+export const campaignName = async (campaignId, { fetchImpl = fetch } = {}) => {
+  if (!campaignId) return null
+  if (campaignNames.has(campaignId)) return campaignNames.get(campaignId)
+  if (Date.now() - (campaignMisses.get(campaignId) ?? 0) < MISS_RETRY_MS) return null
+  try {
+    const { adAccountId } = await getCredentials('linkedin')
+    if (!/^\d+$/.test(adAccountId ?? '')) throw new Error('no ad account')
+    const d = await get(`/adAccounts/${adAccountId}/adCampaigns/${campaignId}`, fetchImpl)
+    const name = typeof d?.name === 'string' && d.name.trim() ? d.name.trim() : null
+    if (!name) throw new Error('no name')
+    campaignNames.set(campaignId, name)
+    return name
+  } catch {
+    campaignMisses.set(campaignId, Date.now())
+    return null
+  }
+}
+
+/** For tests. */
+export const clearCampaignCache = () => {
+  campaignNames.clear()
+  campaignMisses.clear()
+}

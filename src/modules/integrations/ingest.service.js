@@ -122,7 +122,14 @@ const fetchAndMap = async (source, payload, config) => {
   if (source === 'meta') return meta.mapLead(await meta.fetchLead(payload.external_id), config)
   if (source === 'linkedin') {
     const questions = await linkedin.formQuestions(payload.response?.versionedLeadGenFormUrn ?? payload.response?.leadGenFormUrn)
-    return linkedin.mapResponse(payload.response, questions, config)
+    const lead = linkedin.mapResponse(payload.response, questions, config)
+    // Campaign name instead of "urn:li:sponsoredCampaign:…" (never blocks the import)
+    const campaignId = linkedin.campaignIdOf(lead.source_meta?.campaign)
+    if (campaignId) {
+      lead.source_meta.campaign_id = campaignId
+      lead.source_meta.campaign = (await linkedin.campaignName(campaignId)) ?? `LinkedIn campaign ${campaignId}`
+    }
+    return lead
   }
   if (source === 'website' || source === 'whatsapp') return payload.lead
   throw new Error(`Unknown source ${source}`)
@@ -178,6 +185,34 @@ export const ingestWebsiteEnquiry = async ({ contactId, name, email, phone, subj
 
 // ── LinkedIn sync (polling) ───────────────────────────────────────────────
 
+/**
+ * Leads imported before names could be looked up show the raw campaign code
+ * (or "LinkedIn campaign N"). Fill in the real names; safe to run often
+ * (lookups are cached, failures retried after a few hours).
+ */
+export const fillLinkedInCampaignNames = async ({ limit = 500 } = {}) => {
+  const [rows] = await pool.query(
+    `SELECT id, JSON_UNQUOTE(JSON_EXTRACT(source_meta, '$.campaign')) AS campaign FROM leads
+     WHERE source = 'linkedin'
+       AND (JSON_UNQUOTE(JSON_EXTRACT(source_meta, '$.campaign')) LIKE 'urn:li:sponsoredCampaign:%'
+         OR JSON_UNQUOTE(JSON_EXTRACT(source_meta, '$.campaign')) LIKE 'LinkedIn campaign %')
+     ORDER BY id DESC LIMIT ?`,
+    [limit]
+  )
+  let updated = 0
+  for (const r of rows) {
+    const id = linkedin.campaignIdOf(r.campaign)
+    if (!id) continue
+    const name = await linkedin.campaignName(id)
+    // No name yet: at least make the code readable; tried again on a later run
+    const label = name ?? `LinkedIn campaign ${id}`
+    if (label === r.campaign) continue
+    await pool.query("UPDATE leads SET source_meta = JSON_SET(source_meta, '$.campaign', ?, '$.campaign_id', ?) WHERE id = ?", [label, id, r.id])
+    updated++
+  }
+  return updated
+}
+
 export const syncLinkedIn = async (enqueue) => {
   const integration = await getIntegration('linkedin')
   if (!integration.enabled) return { skipped: 'disabled' }
@@ -197,6 +232,7 @@ export const syncLinkedIn = async (enqueue) => {
     }
     await pool.query('UPDATE integrations SET sync_cursor = ? WHERE source = ?', [String(latest), 'linkedin'])
     await markHealth('linkedin', true)
+    await fillLinkedInCampaignNames().catch((err) => console.error('LinkedIn campaign names failed:', err.message))
     return { fetched: responses.length, queued }
   } catch (err) {
     await markHealth('linkedin', false, err.message)
