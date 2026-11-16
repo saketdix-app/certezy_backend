@@ -17,7 +17,7 @@ import * as meta from './meta.adapter.js'
 import * as whatsapp from './whatsapp.adapter.js'
 import { handleInbound, handleStatus } from './whatsapp.service.js'
 import { credentialStatus, getCredentials, saveCredentials, testConnection } from './credentials.js'
-import { chooseConnect, finishConnect, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
+import { chooseConnect, finishConnect, integrationAlerts, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
 import { linkedInChallengeResponse, verifyLinkedInSignature, verifyMetaSignature } from './signature.js'
 
 export const webhooks = Router()
@@ -106,6 +106,15 @@ webhooks.post('/whatsapp', async (req, res) => {
 // ── Admin ─────────────────────────────────────────────────────────────────
 
 const managers = [authenticate, role('admin')]
+// For the admin header: connections expiring within 7 days or no longer working
+admin.get('/alerts', ...managers, async (req, res, next) => {
+  try {
+    return success(res, { data: await integrationAlerts() })
+  } catch (err) {
+    next(err)
+  }
+})
+
 admin.get('/', ...managers, async (req, res, next) => {
   try {
     const base = `${env.frontendUrl}/api/v1/webhooks`
