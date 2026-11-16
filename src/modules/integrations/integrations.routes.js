@@ -17,6 +17,7 @@ import * as meta from './meta.adapter.js'
 import * as whatsapp from './whatsapp.adapter.js'
 import { handleInbound, handleStatus } from './whatsapp.service.js'
 import { credentialStatus, getCredentials, saveCredentials, testConnection } from './credentials.js'
+import { chooseConnect, finishConnect, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
 import { linkedInChallengeResponse, verifyLinkedInSignature, verifyMetaSignature } from './signature.js'
 
 export const webhooks = Router()
@@ -28,7 +29,7 @@ const rawText = (req) => (Buffer.isBuffer(req.body) ? req.body : Buffer.from('')
 
 // Subscription check from the Meta app dashboard
 webhooks.get('/meta', async (req, res) => {
-  const token = (await getCredentials('meta').catch(() => ({}))).verifyToken
+  const token = (await getCredentials('meta', { fresh: true }).catch(() => ({}))).verifyToken
   if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
     return res.status(200).type('text/plain').send(String(req.query['hub.challenge'] ?? ''))
   }
@@ -63,7 +64,7 @@ webhooks.post('/meta', async (req, res) => {
 // Webhook validation: respond with the HMAC of the challenge code
 webhooks.get('/linkedin', async (req, res) => {
   const code = req.query.challengeCode
-  const secret = (await getCredentials('linkedin').catch(() => ({}))).clientSecret
+  const secret = (await getCredentials('linkedin', { fresh: true }).catch(() => ({}))).clientSecret
   if (!code || !secret) return res.sendStatus(400)
   return res.json({ challengeCode: code, challengeResponse: linkedInChallengeResponse(code, secret) })
 })
@@ -81,7 +82,7 @@ webhooks.post('/linkedin', async (req, res) => {
 // ── WhatsApp (Cloud API) ──────────────────────────────────────────────────
 
 webhooks.get('/whatsapp', async (req, res) => {
-  const token = (await getCredentials('whatsapp').catch(() => ({}))).verifyToken
+  const token = (await getCredentials('whatsapp', { fresh: true }).catch(() => ({}))).verifyToken
   if (req.query['hub.mode'] === 'subscribe' && token && req.query['hub.verify_token'] === token) {
     return res.status(200).type('text/plain').send(String(req.query['hub.challenge'] ?? ''))
   }
@@ -121,11 +122,13 @@ admin.get('/', ...managers, async (req, res, next) => {
     const integrations = []
     for (const source of SOURCES) {
       const i = await getIntegration(source)
-      const { fields, configured } = await credentialStatus(source)
+      const { fields, configured, connection } = await credentialStatus(source)
       integrations.push({
         ...i,
         credentials: fields, // set / from where — never the values
         configured,
+        connection, // who / what is connected (no tokens)
+        oauth: OAUTH_SOURCES.includes(source) ? { redirect_uri: redirectUri(source) } : null,
         webhook_url: source === 'website' ? null : `${base}/${source}`,
         last_7_days: Object.fromEntries(counts.filter((c) => c.source === source).map((c) => [c.status, Number(c.n)])),
       })
@@ -159,6 +162,31 @@ admin.put('/:source/credentials', ...managers, validate(schemas.integrationCrede
   try {
     const credentials = await saveCredentials(req, req.params.source, req.body.values, req.body.password)
     return success(res, { message: 'Keys saved', data: { credentials: credentials.fields, configured: credentials.configured } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Connect with Facebook / LinkedIn (Super Admin; checks in oauth.js)
+admin.post('/:source/connect', ...managers, validate(schemas.integrationConnect), async (req, res, next) => {
+  try {
+    return success(res, { data: await startConnect(req, req.params.source, req.body.password) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+admin.post('/:source/oauth', ...managers, validate(schemas.integrationOAuth), async (req, res, next) => {
+  try {
+    return success(res, { data: await finishConnect(req, req.params.source, req.body) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+admin.post('/:source/oauth/choose', ...managers, validate(schemas.integrationOAuthChoose), async (req, res, next) => {
+  try {
+    return success(res, { data: await chooseConnect(req, req.params.source, req.body) })
   } catch (err) {
     next(err)
   }

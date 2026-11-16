@@ -66,6 +66,7 @@ const env = {
   // priority over these; secrets never go to the browser.
   integrations: {
     meta: {
+      appId: process.env.META_APP_ID || '',
       appSecret: process.env.META_APP_SECRET || '',
       verifyToken: process.env.META_VERIFY_TOKEN || '',
       pageAccessToken: process.env.META_PAGE_ACCESS_TOKEN || '',
@@ -81,6 +82,7 @@ const env = {
       appSecret: process.env.WHATSAPP_APP_SECRET || '',
     },
     linkedin: {
+      clientId: process.env.LINKEDIN_CLIENT_ID || '',
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
       accessToken: process.env.LINKEDIN_ACCESS_TOKEN || '',
       adAccountId: process.env.LINKEDIN_AD_ACCOUNT_ID || '',
