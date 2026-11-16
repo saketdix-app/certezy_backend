@@ -4,8 +4,10 @@
 //   • Consultants see and work only leads they own.
 //   • Admins and Super Admins see all leads.
 //   • Closed leads (Not Interested / Junk) reopen only with a reason, by an Admin.
-//   • "Course Done" = the linked student has completed the course (all lessons
-//     and every exam). Enrollment is tracked separately.
+//   • "Course Done" is set by the team whenever they decide (no account, course
+//     or progress check). The auto_course_done automation still moves a lead
+//     there when its student completes the course. Enrollment and course
+//     progress are tracked separately; certificates still need completion.
 
 import { pool } from '../../config/db.js'
 import env from '../../config/env.js'
@@ -269,15 +271,6 @@ export const changeStage = async (req, id, { stage, reason }) => {
   const why = String(reason ?? '').trim()
   if ((REASON_REQUIRED.includes(stage) || reopening) && !why) {
     throw fail(400, reopening ? 'Give a reason for reopening this lead' : `Give a reason for ${STAGE_LABELS[stage]}`)
-  }
-  if (stage === 'course_done') {
-    const progress = await studentProgress(lead)
-    if (!lead.user_id || !lead.course_id) {
-      throw fail(400, 'Link this lead to a student account and course first (same email as their account)')
-    }
-    if (!progress.course_completed) {
-      throw fail(400, `The student hasn't completed the course yet${progress.completion_note ? ` — ${progress.completion_note}` : ''}`)
-    }
   }
 
   await pool.query(
