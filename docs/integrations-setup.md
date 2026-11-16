@@ -80,8 +80,9 @@ Super Admin clicks **Connect with LinkedIn** again.
 Optional, faster: if LinkedIn enables lead notifications (webhooks) for your
 app, set the webhook URL to `https://certezy.com/api/v1/webhooks/linkedin`.
 
-LinkedIn's response format is versioned (`LINKEDIN_API_VERSION`, default
-202411). The field mapping follows LinkedIn's documentation; check the first
+LinkedIn's API is versioned by month and each version is retired after about
+a year. CERTEZY picks a current version automatically and moves to an older
+supported one if LinkedIn rejects it, so leave `LINKEDIN_API_VERSION` empty. The field mapping follows LinkedIn's documentation; check the first
 real leads after connecting and tell the developer if any field is empty.
 
 ## WhatsApp (Cloud API) — 2.0 Phase 8

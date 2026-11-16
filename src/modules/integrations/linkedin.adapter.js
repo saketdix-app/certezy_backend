@@ -8,16 +8,13 @@
 // confirm against a real account when connecting.
 
 import { getCredentials } from './credentials.js'
+import { linkedInFetch } from './linkedinVersion.js'
 
 const API = 'https://api.linkedin.com/rest'
 
-const headers = async () => {
-  const { accessToken, version } = await getCredentials('linkedin')
-  return { Authorization: `Bearer ${accessToken}`, 'LinkedIn-Version': version, 'X-Restli-Protocol-Version': '2.0.0' }
-}
-
 const get = async (path, fetchImpl) => {
-  const res = await fetchImpl(`${API}${path}`, { headers: await headers() })
+  const { accessToken } = await getCredentials('linkedin')
+  const res = await linkedInFetch(`${API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } }, fetchImpl)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(`LinkedIn API ${res.status}: ${data?.message ?? 'request failed'}`)
   return data

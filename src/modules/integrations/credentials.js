@@ -14,6 +14,7 @@ import env from '../../config/env.js'
 import { pool } from '../../config/db.js'
 import { audit } from '../../utils/audit.js'
 import { keyFrom, open, seal } from '../../utils/secretBox.js'
+import { linkedInFetch } from './linkedinVersion.js'
 import { notifySuperAdmins, reauthenticate } from '../team/team.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
@@ -116,7 +117,6 @@ export const getCredentials = async (source, opts = {}) => {
       refreshToken: v.refresh_token,
       adAccountId: v.ad_account_id,
       clientSecret: v.client_secret,
-      version: env.integrations.linkedin.version,
       connection: parseConnection(v.connection),
     }
   }
@@ -273,11 +273,12 @@ export const testConnection = async (source, { fetchImpl = fetch } = {}) => {
     }
     if (source === 'linkedin') {
       if (!c.accessToken || !c.adAccountId) return { ok: false, message: 'Add the access token and ad account ID first' }
-      const r = await callJson(
+      const res = await linkedInFetch(
         `https://api.linkedin.com/rest/adAccounts/${encodeURIComponent(c.adAccountId)}`,
-        { Authorization: `Bearer ${c.accessToken}`, 'LinkedIn-Version': c.version, 'X-Restli-Protocol-Version': '2.0.0' },
+        { headers: { Authorization: `Bearer ${c.accessToken}` } },
         fetchImpl
       )
+      const r = { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }
       if (r.ok) return { ok: true, message: `Connected to the ad account "${r.data.name ?? c.adAccountId}"` }
       // 403 = the token works but the app can't read ad accounts (no Advertising API) — leads still import
       if (r.status === 403) return { ok: true, message: 'The LinkedIn token works (this app can\'t read ad account details, which lead import doesn\'t need)' }

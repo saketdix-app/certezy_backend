@@ -86,7 +86,8 @@ const env = {
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET || '',
       accessToken: process.env.LINKEDIN_ACCESS_TOKEN || '',
       adAccountId: process.env.LINKEDIN_AD_ACCOUNT_ID || '',
-      version: process.env.LINKEDIN_API_VERSION || '202411',
+      // Optional YYYYMM; empty = pick a current version automatically (linkedinVersion.js)
+      version: process.env.LINKEDIN_API_VERSION || '',
     },
   },
   // Business timezone for 'today' in the CRM (follow-ups due today, daily limits)
