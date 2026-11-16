@@ -24,6 +24,9 @@ const get = async (path, fetchImpl) => {
 export const fetchResponses = async (sinceMs, { fetchImpl = fetch } = {}) => {
   const { accessToken, adAccountId } = await getCredentials('linkedin')
   if (!accessToken || !adAccountId) throw new Error('The LinkedIn access token / ad account ID are not set (Admin → Integrations)')
+  if (!/^\d+$/.test(adAccountId)) {
+    throw new Error('The LinkedIn Ad account ID isn\'t a number — enter just the number from Campaign Manager (e.g. 512345678) under Change keys')
+  }
   const owner = encodeURIComponent(`urn:li:sponsoredAccount:${adAccountId}`)
   const start = Math.max(0, Number(sinceMs) || Date.now() - 7 * 86400e3)
   const data = await get(

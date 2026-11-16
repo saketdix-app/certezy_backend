@@ -51,6 +51,21 @@ export const FIELDS = {
   ],
 }
 
+/**
+ * LinkedIn ad account IDs are numbers. People paste them in many shapes:
+ * "urn:li:sponsoredAccount:512345678", a Campaign Manager link
+ * (".../accounts/512345678/..."), "512 345 678", "512,345,678".
+ * → "512345678", or null if there's no account number in it.
+ */
+export const normalizeAdAccountId = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const m = s.match(/sponsoredAccount(?::|%3A)(\d+)/i) ?? s.match(/\/accounts\/(\d+)/i)
+  if (m) return m[1]
+  const digits = s.replace(/[\s,.]/g, '')
+  return /^\d{3,20}$/.test(digits) ? digits : null
+}
+
 const key = () => keyFrom(env.secretsEncryptionKey, env.jwt.secret)
 const CACHE_MS = 60 * 1000 // the queue worker is a separate process: it picks up changes within a minute
 const cache = new Map()
@@ -115,7 +130,8 @@ export const getCredentials = async (source, opts = {}) => {
       clientId: v.client_id,
       accessToken: v.access_token,
       refreshToken: v.refresh_token,
-      adAccountId: v.ad_account_id,
+      // Cleaned up if pasted as a link / URN; left as typed if there's no number (the adapter then explains)
+      adAccountId: normalizeAdAccountId(v.ad_account_id) ?? v.ad_account_id,
       clientSecret: v.client_secret,
       connection: parseConnection(v.connection),
     }
@@ -215,6 +231,11 @@ export const saveCredentials = async (req, source, values, password) => {
   if (!changes.length) throw fail(400, 'Nothing to save')
   for (const f of changes) {
     if (values[f.name].trim().length > 4000) throw fail(400, `${f.label} is too long`)
+  }
+  if (source === 'linkedin' && values.ad_account_id?.trim()) {
+    const id = normalizeAdAccountId(values.ad_account_id)
+    if (!id) throw fail(400, 'The Ad account ID should be the number from LinkedIn Campaign Manager, e.g. 512345678')
+    values = { ...values, ad_account_id: id }
   }
   try {
     await reauthenticate(actor, password)
