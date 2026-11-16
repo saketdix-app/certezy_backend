@@ -434,6 +434,16 @@ const schemas = {
     values: Joi.object().pattern(Joi.string().max(40), Joi.string().allow('').max(4000)).min(1).required(),
     password: Joi.string().max(200).required(),
   }),
+  integrationConnect: Joi.object({ password: Joi.string().max(200).required() }),
+  integrationOAuth: Joi.object({
+    state: Joi.string().max(2000).required(),
+    code: Joi.string().max(2000).optional(),
+    error: Joi.string().max(200).optional(),
+  }).or('code', 'error'),
+  integrationOAuthChoose: Joi.object({
+    selection: Joi.string().max(20000).required(),
+    id: Joi.string().max(100).required(),
+  }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

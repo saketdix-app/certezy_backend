@@ -7,6 +7,8 @@
 //     it in the portal falls back to .env.
 //   • Only Super Admins can change them, after re-entering their password.
 //     Every change is audit-logged (key names only) and other Super Admins are emailed.
+//   • "Connect with Facebook / LinkedIn" (oauth.js) fills most keys
+//     automatically; `internal` fields are only written by that flow.
 
 import env from '../../config/env.js'
 import { pool } from '../../config/db.js'
@@ -16,17 +18,27 @@ import { notifySuperAdmins, reauthenticate } from '../team/team.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 
-/** Keys per integration. `secret: false` = an ID (last 4 shown); `env` = the .env fallback. */
+/**
+ * Keys per integration. `secret: false` = an ID (last 4 shown); `env` = the
+ * .env fallback; `optional` = not needed for leads to flow; `internal` = set
+ * by Connect only, never listed or typed in.
+ */
+const none = () => ''
 export const FIELDS = {
   meta: [
+    { name: 'app_id', label: 'App ID', secret: false, optional: true, env: () => env.integrations.meta.appId },
     { name: 'page_access_token', label: 'Page access token', secret: true, env: () => env.integrations.meta.pageAccessToken },
     { name: 'app_secret', label: 'App secret', secret: true, env: () => env.integrations.meta.appSecret },
     { name: 'verify_token', label: 'Webhook verify token', secret: true, env: () => env.integrations.meta.verifyToken },
+    { name: 'connection', internal: true, env: none },
   ],
   linkedin: [
+    { name: 'client_id', label: 'Client ID', secret: false, optional: true, env: () => env.integrations.linkedin.clientId },
     { name: 'access_token', label: 'Access token', secret: true, env: () => env.integrations.linkedin.accessToken },
     { name: 'ad_account_id', label: 'Ad account ID', secret: false, env: () => env.integrations.linkedin.adAccountId },
     { name: 'client_secret', label: 'Client secret', secret: true, env: () => env.integrations.linkedin.clientSecret },
+    { name: 'refresh_token', internal: true, secret: true, env: none },
+    { name: 'connection', internal: true, env: none },
   ],
   whatsapp: [
     { name: 'token', label: 'Access token', secret: true, env: () => env.integrations.whatsapp.token },
@@ -61,9 +73,9 @@ const decrypt = (row) => {
 }
 
 /** Plain values by field name for one source (portal value, else .env). Server-side use only. */
-const resolve = async (source) => {
+const resolve = async (source, { fresh = false } = {}) => {
   const hit = cache.get(source)
-  if (hit && hit.at > Date.now() - CACHE_MS) return hit.values
+  if (!fresh && hit && hit.at > Date.now() - CACHE_MS) return hit.values
   const rows = await storedRows(source)
   const values = {}
   for (const f of FIELDS[source] ?? []) {
@@ -76,17 +88,40 @@ const resolve = async (source) => {
 
 export const clearCredentialCache = () => cache.clear()
 
-/** Credentials in the shape the adapters use. */
-export const getCredentials = async (source) => {
-  const v = await resolve(source)
+const parseConnection = (raw) => {
+  try {
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/** Credentials in the shape the adapters use. `fresh` skips the cache (webhook verification). */
+export const getCredentials = async (source, opts = {}) => {
+  const v = await resolve(source, opts)
   if (source === 'meta') {
-    return { pageAccessToken: v.page_access_token, appSecret: v.app_secret, verifyToken: v.verify_token, graphVersion: env.integrations.meta.graphVersion }
+    return {
+      appId: v.app_id,
+      pageAccessToken: v.page_access_token,
+      appSecret: v.app_secret,
+      verifyToken: v.verify_token,
+      graphVersion: env.integrations.meta.graphVersion,
+      connection: parseConnection(v.connection),
+    }
   }
   if (source === 'linkedin') {
-    return { accessToken: v.access_token, adAccountId: v.ad_account_id, clientSecret: v.client_secret, version: env.integrations.linkedin.version }
+    return {
+      clientId: v.client_id,
+      accessToken: v.access_token,
+      refreshToken: v.refresh_token,
+      adAccountId: v.ad_account_id,
+      clientSecret: v.client_secret,
+      version: env.integrations.linkedin.version,
+      connection: parseConnection(v.connection),
+    }
   }
   if (source === 'whatsapp') {
-    const metaSecret = v.app_secret ? '' : (await resolve('meta')).app_secret
+    const metaSecret = v.app_secret ? '' : (await resolve('meta', opts)).app_secret
     return {
       token: v.token,
       phoneNumberId: v.phone_number_id,
@@ -101,8 +136,9 @@ export const getCredentials = async (source) => {
 
 /** What the portal may see: per key, whether it is set and where from. Never the value. */
 export const credentialStatus = async (source) => {
-  const fields = FIELDS[source]
-  if (!fields) return { fields: [], configured: true }
+  const all = FIELDS[source]
+  if (!all) return { fields: [], configured: true, connection: null }
+  const fields = all.filter((f) => !f.internal)
   const rows = await storedRows(source)
   const out = fields.map((f) => {
     const row = rows.find((r) => r.name === f.name)
@@ -125,7 +161,41 @@ export const credentialStatus = async (source) => {
     const appSecret = out.find((f) => f.name === 'app_secret')
     if (!appSecret.set && (await getCredentials('whatsapp')).appSecret) Object.assign(appSecret, { set: true, from: 'meta' })
   }
-  return { fields: out, configured: out.every((f) => f.set || f.optional) }
+  const connRow = rows.find((r) => r.name === 'connection')
+  const connection = connRow ? parseConnection(decrypt(connRow)) : null
+  return { fields: out, configured: out.every((f) => f.set || f.optional), connection }
+}
+
+/**
+ * Write keys (server-side callers: the portal save below and Connect).
+ * '' removes a portal value. Replacing a token by hand forgets the old
+ * Connect details, so the card doesn't describe a connection that's gone.
+ */
+export const setCredentialValues = async (source, values, actorId) => {
+  const fields = FIELDS[source] ?? []
+  const touched = Object.keys(values)
+  if (!values.connection && touched.some((k) => ['page_access_token', 'access_token'].includes(k))) {
+    values = { ...values, connection: '', ...(source === 'linkedin' && { refresh_token: '' }) }
+  }
+  const saved = []
+  const cleared = []
+  for (const f of fields) {
+    if (typeof values[f.name] !== 'string') continue
+    const value = values[f.name].trim()
+    if (value) {
+      await pool.query(
+        `INSERT INTO integration_secrets (source, name, sealed, hint, updated_by) VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE sealed = VALUES(sealed), hint = VALUES(hint), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()`,
+        [source, f.name, seal(value, key()), f.secret === false ? value.slice(-4) : null, actorId ?? null]
+      )
+      saved.push(f.label ?? f.name)
+    } else {
+      await pool.query('DELETE FROM integration_secrets WHERE source = ? AND name = ?', [source, f.name])
+      cleared.push(f.label ?? f.name)
+    }
+  }
+  clearCredentialCache()
+  return { saved, cleared }
 }
 
 /**
@@ -135,7 +205,7 @@ export const credentialStatus = async (source) => {
  */
 export const saveCredentials = async (req, source, values, password) => {
   const actor = req.user
-  const fields = FIELDS[source]
+  const fields = FIELDS[source]?.filter((f) => !f.internal)
   if (!fields) throw fail(404, 'This integration has no keys to save')
   if (actor.role !== 'super_admin') {
     await audit(req, { action: 'integration.credentials', result: 'denied', targetType: 'integration', details: { source } })
@@ -153,23 +223,11 @@ export const saveCredentials = async (req, source, values, password) => {
     throw err
   }
 
-  const saved = []
-  const cleared = []
-  for (const f of changes) {
-    const value = values[f.name].trim()
-    if (value) {
-      await pool.query(
-        `INSERT INTO integration_secrets (source, name, sealed, hint, updated_by) VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE sealed = VALUES(sealed), hint = VALUES(hint), updated_by = VALUES(updated_by), updated_at = UTC_TIMESTAMP()`,
-        [source, f.name, seal(value, key()), f.secret ? null : value.slice(-4), actor.id]
-      )
-      saved.push(f.label)
-    } else {
-      await pool.query('DELETE FROM integration_secrets WHERE source = ? AND name = ?', [source, f.name])
-      cleared.push(f.label)
-    }
-  }
-  clearCredentialCache()
+  const typed = Object.fromEntries(changes.map((f) => [f.name, values[f.name]]))
+  const { saved: savedAll, cleared: clearedAll } = await setCredentialValues(source, typed, actor.id)
+  const labels = new Set(fields.map((f) => f.label))
+  const saved = savedAll.filter((l) => labels.has(l))
+  const cleared = clearedAll.filter((l) => labels.has(l))
   // Names only — never values
   await audit(req, { action: 'integration.credentials', targetType: 'integration', details: { source, saved, cleared } })
   await notifySuperAdmins(
@@ -220,7 +278,10 @@ export const testConnection = async (source, { fetchImpl = fetch } = {}) => {
         { Authorization: `Bearer ${c.accessToken}`, 'LinkedIn-Version': c.version, 'X-Restli-Protocol-Version': '2.0.0' },
         fetchImpl
       )
-      return r.ok ? { ok: true, message: `Connected to the ad account "${r.data.name ?? c.adAccountId}"` } : { ok: false, message: `LinkedIn: ${apiError(r)}` }
+      if (r.ok) return { ok: true, message: `Connected to the ad account "${r.data.name ?? c.adAccountId}"` }
+      // 403 = the token works but the app can't read ad accounts (no Advertising API) — leads still import
+      if (r.status === 403) return { ok: true, message: 'The LinkedIn token works (this app can\'t read ad account details, which lead import doesn\'t need)' }
+      return { ok: false, message: `LinkedIn: ${apiError(r)}` }
     }
     return { ok: false, message: 'Nothing to test for this integration' }
   } catch (err) {
