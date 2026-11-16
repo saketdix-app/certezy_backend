@@ -24,6 +24,7 @@ import { managerIds, notify } from '../../utils/notify.js'
 import { keyFrom, open, seal } from '../../utils/secretBox.js'
 import { notifySuperAdmins, reauthenticate } from '../team/team.service.js'
 import { getCredentials, setCredentialValues } from './credentials.js'
+import { linkedInFetch } from './linkedinVersion.js'
 
 export const OAUTH_SOURCES = ['meta', 'linkedin']
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
@@ -205,21 +206,17 @@ const linkedInToken = async (params, fetchImpl) => {
   }
 }
 
-const liHeaders = (token) => ({
-  Authorization: `Bearer ${token}`,
-  'LinkedIn-Version': env.integrations.linkedin.version,
-  'X-Restli-Protocol-Version': '2.0.0',
-})
+const liGet = (url, token, fetchImpl) => linkedInFetch(url, { headers: { Authorization: `Bearer ${token}` } }, fetchImpl)
 
 /** Ad accounts this person can use. [] when the app can't list them (no r_ads). */
 const linkedInAccounts = async (token, fetchImpl) => {
-  const res = await fetchImpl(`${LI_REST}/adAccountUsers?q=authenticatedUser`, { headers: liHeaders(token) })
+  const res = await liGet(`${LI_REST}/adAccountUsers?q=authenticatedUser`, token, fetchImpl)
   if (!res.ok) return []
   const data = await jsonOf(res)
   const ids = [...new Set((data.elements ?? []).map((e) => String(e.account ?? '').split(':').pop()).filter(Boolean))]
   const out = []
   for (const id of ids.slice(0, 50)) {
-    const r = await fetchImpl(`${LI_REST}/adAccounts/${encodeURIComponent(id)}`, { headers: liHeaders(token) }).catch(() => null)
+    const r = await liGet(`${LI_REST}/adAccounts/${encodeURIComponent(id)}`, token, fetchImpl).catch(() => null)
     const d = r?.ok ? await jsonOf(r) : {}
     out.push({ id, name: d.name ?? `Ad account ${id}` })
   }
