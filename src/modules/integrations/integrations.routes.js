@@ -219,6 +219,28 @@ admin.post('/events/:id/retry', ...managers, async (req, res, next) => {
   }
 })
 
+// Re-queue every failed import of one source (e.g. after a fix) — last 30 days, at most 1000
+admin.post('/:source/retry-failed', ...managers, async (req, res, next) => {
+  try {
+    const { source } = req.params
+    if (!SOURCES.includes(source)) return res.status(404).json({ success: false, message: 'Unknown integration' })
+    const [rows] = await pool.query(
+      `SELECT id FROM lead_ingest_events
+       WHERE source = ? AND status = 'failed' AND received_at >= UTC_TIMESTAMP() - INTERVAL 30 DAY
+       ORDER BY id LIMIT 1000`,
+      [source]
+    )
+    if (!rows.length) return success(res, { message: 'Nothing to retry', data: { queued: 0 } })
+    const ids = rows.map((r) => r.id)
+    await pool.query("UPDATE lead_ingest_events SET status = 'received', error = NULL WHERE id IN (?)", [ids])
+    for (const id of ids) await enqueueIngest(id)
+    await audit(req, { action: 'integration.retry_failed', targetType: 'integration', details: { source, count: ids.length } })
+    return success(res, { message: `${ids.length} queued for another try`, data: { queued: ids.length } })
+  } catch (err) {
+    next(err)
+  }
+})
+
 admin.post('/linkedin/sync', ...managers, async (req, res, next) => {
   try {
     const r = await syncLinkedIn(enqueueIngest)

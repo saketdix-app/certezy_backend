@@ -29,41 +29,88 @@ export const fetchResponses = async (sinceMs, { fetchImpl = fetch } = {}) => {
   }
   const owner = encodeURIComponent(`urn:li:sponsoredAccount:${adAccountId}`)
   const start = Math.max(0, Number(sinceMs) || Date.now() - 7 * 86400e3)
-  const data = await get(
-    `/leadFormResponses?q=owner&owner=(sponsoredAccount:${owner})&leadType=(leadType:SPONSORED)` +
-      `&submittedAtTimeRange=(start:${start},end:${Date.now()})&count=100`,
-    fetchImpl
-  )
-  return data.elements ?? []
+  const end = Date.now()
+  const out = []
+  // Page through (LinkedIn returns at most `count` per request)
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await get(
+      `/leadFormResponses?q=owner&owner=(sponsoredAccount:${owner})&leadType=(leadType:SPONSORED)` +
+        `&submittedAtTimeRange=(start:${start},end:${end})&start=${page * PAGE}&count=${PAGE}`,
+      fetchImpl
+    )
+    const elements = data.elements ?? []
+    out.push(...elements)
+    if (elements.length < PAGE) break
+  }
+  // Only what was asked for, even if LinkedIn ignored the time filter
+  return out.filter((r) => !r?.submittedAt || Number(r.submittedAt) >= start)
 }
 
+const PAGE = 100
+const MAX_PAGES = 20
+
+/**
+ * Form id from what a response carries:
+ *   "urn:li:leadGenForm:3162" or "urn:li:versionedLeadGenForm:(urn:li:leadGenForm:3162,1)" → "3162"
+ */
+export const leadFormId = (urn) => {
+  const s = String(urn ?? '')
+  const m = s.match(/leadGenForm:(\d+)/) ?? s.match(/(\d+)/)
+  return m ? m[1] : null
+}
+
+const localized = (v) => (v?.localized ? Object.values(v.localized)[0] : typeof v === 'string' ? v : null)
+
 const formCache = new Map()
-/** questionId → predefined field name, for one form. */
+/**
+ * questionId → { field, label, options } for one form.
+ *   field: LinkedIn's predefined field (FIRST_NAME, EMAIL, …) or null for custom questions
+ *   label: the question as shown on the form
+ *   options: multiple-choice option id → text
+ */
 export const formQuestions = async (formUrn, { fetchImpl = fetch } = {}) => {
-  if (!formUrn) return {}
-  if (formCache.has(formUrn)) return formCache.get(formUrn)
-  const id = String(formUrn).split(':').pop()
-  const form = await get(`/leadForms/${encodeURIComponent(id)}`, fetchImpl)
+  const id = leadFormId(formUrn)
+  if (!id) return {}
+  if (formCache.has(id)) return formCache.get(id)
+  const form = await get(`/leadForms/${id}`, fetchImpl)
   const map = Object.fromEntries(
-    (form?.content?.questions ?? []).map((q) => [q.questionId, q.predefinedField ?? q.name ?? `q${q.questionId}`])
+    (form?.content?.questions ?? []).map((q) => [
+      q.questionId,
+      {
+        field: q.predefinedField ?? null,
+        label: localized(q.question) ?? q.name ?? `Question ${q.questionId}`,
+        options: Object.fromEntries(
+          (q.questionDetails?.multipleChoiceQuestionDetails?.options ?? []).map((o) => [o.id, localized(o.text) ?? String(o.id)])
+        ),
+      },
+    ])
   )
-  formCache.set(formUrn, map)
+  formCache.set(id, map)
   return map
 }
 
-const answerText = (a) =>
-  a?.answerDetails?.textQuestionAnswer?.answer ??
-  a?.answerDetails?.multipleChoiceAnswer?.options?.join(', ') ??
-  null
+const answerText = (a, q) => {
+  const d = a?.answerDetails ?? {}
+  if (d.textQuestionAnswer) return d.textQuestionAnswer.answer ?? null
+  if (d.multipleChoiceAnswer) return (d.multipleChoiceAnswer.options ?? []).map((o) => q?.options?.[o] ?? String(o)).join(', ') || null
+  return null
+}
 
 /** LinkedIn response + question map → normalised lead. config.form_courses maps form id → course id. */
 export const mapResponse = (r, questions = {}, config = {}) => {
-  const values = {}
-  for (const a of r?.formResponse?.answers ?? []) values[questions[a.questionId] ?? `q${a.questionId}`] = answerText(a)
+  const values = {} // predefined fields: FIRST_NAME, EMAIL, …
+  const answers = {} // custom questions, by their label
+  for (const a of r?.formResponse?.answers ?? []) {
+    const q = questions[a.questionId]
+    const text = answerText(a, q)
+    if (!text) continue
+    if (q?.field) values[q.field] = text
+    else answers[q?.label ?? `Question ${a.questionId}`] = text
+  }
   const name = [values.FIRST_NAME, values.LAST_NAME].filter(Boolean).join(' ').trim()
-  const formId = String(r?.versionedLeadGenFormUrn ?? r?.leadGenFormUrn ?? '').split(':').pop().split(',')[0] || null
+  const formId = leadFormId(r?.versionedLeadGenFormUrn ?? r?.leadGenFormUrn)
   const known = new Set(['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'PHONE_NUMBER', 'WORK_EMAIL', 'WORK_PHONE_NUMBER'])
-  const answers = Object.fromEntries(Object.entries(values).filter(([k, v]) => !known.has(k) && v))
+  for (const [k, v] of Object.entries(values)) if (!known.has(k)) answers[k] = v // company, job title, country, …
   return {
     name: name || 'LinkedIn lead',
     email: values.EMAIL ?? values.WORK_EMAIL ?? null,
@@ -73,8 +120,9 @@ export const mapResponse = (r, questions = {}, config = {}) => {
     source_meta: {
       campaign: r?.leadMetadata?.sponsoredLeadMetadata?.campaign ?? undefined,
       form: formId ?? undefined,
+      test_lead: r?.testLead ? true : undefined,
       answers: Object.keys(answers).length ? answers : undefined,
-      submitted_at: r?.submittedAt ? new Date(r.submittedAt).toISOString() : undefined,
+      submitted_at: r?.submittedAt ? new Date(Number(r.submittedAt)).toISOString() : undefined,
     },
     consent: { platform: 'linkedin', consents: r?.formResponse?.consentResponses ?? undefined },
     submitted_at_ms: Number(r?.submittedAt) || null,
