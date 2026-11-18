@@ -79,7 +79,7 @@ const sendDiscountMail = (
     html: `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
         <div style="background:#0f2545;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">
-          <p style="margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd">CERTEZY E-Learning</p>
+          <p style="margin:0;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#93c5fd">CERTEZY E-LEARNING PVT LTD</p>
           <h2 style="margin:6px 0 0;font-size:22px">${name ? `Hi ${name}, ` : ''}you have a special offer</h2>
         </div>
         <div style="border:1px solid #e2e8f0;border-top:0;padding:24px;border-radius:0 0 12px 12px">
@@ -175,7 +175,7 @@ const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, 
         <p>Hi ${escapeHtml(name || 'there')},</p>
         <div style="font-size:15px">${escapeHtml(reply)}</div>
         <p style="margin-top:20px">Best regards,<br>${escapeHtml(adminName || 'The CERTEZY team')}<br>
-          <span style="color:#64748b">CERTEZY E-Learning Pvt. Ltd. · ${env.supportEmail}</span></p>
+          <span style="color:#64748b">CERTEZY E-LEARNING PVT LTD · ${env.supportEmail}</span></p>
         <div style="margin-top:24px;padding:12px 16px;border-left:3px solid #cbd5e1;color:#64748b;font-size:13px">
           <p style="margin:0 0 6px">Your message${
             receivedAt ? ` of ${new Date(receivedAt).toUTCString().replace(/ GMT$/, ' UTC')}` : ''
@@ -218,7 +218,7 @@ const sendPasswordResetMail = (to, { name, resetUrl, minutes = 60, provider }) =
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
         <p>Hi ${escapeHtml(name || 'there')},</p>
         ${body}
-        <p style="margin-top:20px">— CERTEZY E-Learning Pvt. Ltd.</p>
+        <p style="margin-top:20px">— CERTEZY E-LEARNING PVT LTD</p>
       </div>
     `,
   })
@@ -240,7 +240,7 @@ const sendStaffInviteMail = (to, { name, roleLabel, invitedBy, setUrl, hours = 7
         <p style="font-size:13px;color:#64748b">The link works once and expires in ${hours} hours. If you weren't
           expecting this, ignore this email or reply to let us know.</p>
         <p style="font-size:12px;color:#94a3b8">If the button doesn't work, open: ${setUrl}</p>
-        <p style="margin-top:20px">— CERTEZY E-Learning Pvt. Ltd.</p>
+        <p style="margin-top:20px">— CERTEZY E-LEARNING PVT LTD</p>
       </div>
     `,
   })
@@ -298,7 +298,7 @@ const sendSyllabusMail = (to, { name, courseTitle, courseUrl, sections = [] }) =
           .join('')}
         <p style="margin-top:24px"><a href="${courseUrl}" style="background:#236a9e;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">View the course</a></p>
         <p style="font-size:13px;color:#5e6e85">Questions? Reply to this email and an advisor will help you.<br>
-          CERTEZY E-Learning Pvt. Ltd. · ${env.supportEmail}</p>
+          CERTEZY E-LEARNING PVT LTD · ${env.supportEmail}</p>
       </div>
     `,
   })

@@ -381,6 +381,32 @@ const regenerateCertificate = async (id, { issue_date, training_start, training_
   return { ...updated, pdf_url, regenerated: true }
 }
 
+// ── Rebuild every stored certificate's PDF (same number, same dates) ──────
+// Used after the certificate design or the issuer name changes.
+const refreshAllCertificatePdfs = async ({ onProgress } = {}) => {
+  const ids = await queries.listCertificateIds()
+  const result = { total: ids.length, done: 0, failed: [] }
+  for (const id of ids) {
+    try {
+      const [rows] = await queries.getCertificateById(id)
+      const cert = rows[0]
+      if (!cert) continue
+      const [courseRows] = await courseQueries.getCourseById(cert.course_id)
+      const student = await findById(cert.user_id)
+      if (!courseRows.length || !student) throw new Error('course or student not found')
+      const updated = await attachPdf(cert, { student, course: courseRows[0] })
+      // Same S3 key is overwritten — a version query makes browsers fetch the new file
+      await queries.updatePdfUrl(cert.id, `${updated.pdf_url.split('?')[0]}?v=${Date.now()}`)
+      result.done += 1
+      onProgress?.({ id, certificate_no: cert.certificate_no, ok: true })
+    } catch (err) {
+      result.failed.push({ id, error: err.message })
+      onProgress?.({ id, ok: false, error: err.message })
+    }
+  }
+  return result
+}
+
 // ── Admin — all certificates ───────────────────────────────────────────────
 const getAllCertificates = async ({ page = 1, limit = 20, search } = {}) => {
   page = Math.max(1, Number(page) || 1)
@@ -435,4 +461,5 @@ export {
   getAllCertificates,
   revokeCertificate,
   regenerateCertificate,
+  refreshAllCertificatePdfs,
 }
