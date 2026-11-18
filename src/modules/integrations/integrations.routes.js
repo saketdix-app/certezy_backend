@@ -255,7 +255,9 @@ admin.post('/linkedin/sync', ...managers, async (req, res, next) => {
     const r = await syncLinkedIn(enqueueIngest)
     if (r.error) return res.status(502).json({ success: false, message: `LinkedIn: ${r.error}` })
     if (r.skipped) return res.status(400).json({ success: false, message: 'Turn the LinkedIn integration on first' })
-    return success(res, { message: `${r.fetched} checked, ${r.queued} new`, data: r })
+    const across = r.accounts > 1 ? ` across ${r.accounts} ad accounts` : ''
+    const problems = r.partial_errors?.length ? ` (${r.partial_errors.join(' · ')})` : ''
+    return success(res, { message: `${r.fetched} checked, ${r.queued} new${across}${problems}`, data: r })
   } catch (err) {
     next(err)
   }

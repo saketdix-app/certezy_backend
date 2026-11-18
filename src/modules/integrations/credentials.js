@@ -31,12 +31,15 @@ export const FIELDS = {
     { name: 'page_access_token', label: 'Page access token', secret: true, env: () => env.integrations.meta.pageAccessToken },
     { name: 'app_secret', label: 'App secret', secret: true, env: () => env.integrations.meta.appSecret },
     { name: 'verify_token', label: 'Webhook verify token', secret: true, env: () => env.integrations.meta.verifyToken },
+    // Every Page connected through Connect: [{ id, name, token }] (page_access_token = the first)
+    { name: 'pages', internal: true, secret: true, env: none },
     { name: 'connection', internal: true, env: none },
   ],
   linkedin: [
     { name: 'client_id', label: 'Client ID', secret: false, optional: true, env: () => env.integrations.linkedin.clientId },
     { name: 'access_token', label: 'Access token', secret: true, env: () => env.integrations.linkedin.accessToken },
-    { name: 'ad_account_id', label: 'Ad account ID', secret: false, env: () => env.integrations.linkedin.adAccountId },
+    // One or more, comma-separated
+    { name: 'ad_account_id', label: 'Ad account IDs', secret: false, env: () => env.integrations.linkedin.adAccountId },
     { name: 'client_secret', label: 'Client secret', secret: true, env: () => env.integrations.linkedin.clientSecret },
     { name: 'refresh_token', internal: true, secret: true, env: none },
     { name: 'connection', internal: true, env: none },
@@ -64,6 +67,26 @@ export const normalizeAdAccountId = (raw) => {
   if (m) return m[1]
   const digits = s.replace(/[\s,.]/g, '')
   return /^\d{3,20}$/.test(digits) ? digits : null
+}
+
+/** "512345678, 498765432" (or links / URNs) → ["512345678", "498765432"]; null if any part has no number. */
+export const normalizeAdAccountIds = (raw) => {
+  const parts = String(raw ?? '')
+    .split(/[\n;]+|,(?=\s*(?:urn|https?:|\d{6,}))/i)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  if (!parts.length) return null
+  const ids = parts.map(normalizeAdAccountId)
+  return ids.every(Boolean) ? [...new Set(ids)] : null
+}
+
+const parseList = (raw) => {
+  try {
+    const v = raw ? JSON.parse(raw) : null
+    return Array.isArray(v) ? v : null
+  } catch {
+    return null
+  }
 }
 
 const key = () => keyFrom(env.secretsEncryptionKey, env.jwt.secret)
@@ -119,6 +142,12 @@ export const getCredentials = async (source, opts = {}) => {
     return {
       appId: v.app_id,
       pageAccessToken: v.page_access_token,
+      // Connected Pages (older single-Page setups: just the one token)
+      pages:
+        parseList(v.pages) ??
+        (v.page_access_token
+          ? [{ id: parseConnection(v.connection)?.page_id ?? null, name: parseConnection(v.connection)?.page_name ?? null, token: v.page_access_token }]
+          : []),
       appSecret: v.app_secret,
       verifyToken: v.verify_token,
       graphVersion: env.integrations.meta.graphVersion,
@@ -130,8 +159,9 @@ export const getCredentials = async (source, opts = {}) => {
       clientId: v.client_id,
       accessToken: v.access_token,
       refreshToken: v.refresh_token,
-      // Cleaned up if pasted as a link / URN; left as typed if there's no number (the adapter then explains)
-      adAccountId: normalizeAdAccountId(v.ad_account_id) ?? v.ad_account_id,
+      // Cleaned up if pasted as links / URNs; left as typed if there's no number (the adapter then explains)
+      adAccountIds: normalizeAdAccountIds(v.ad_account_id) ?? (v.ad_account_id ? [v.ad_account_id] : []),
+      adAccountId: normalizeAdAccountIds(v.ad_account_id)?.[0] ?? v.ad_account_id,
       clientSecret: v.client_secret,
       connection: parseConnection(v.connection),
     }
@@ -158,7 +188,8 @@ export const credentialStatus = async (source) => {
   const rows = await storedRows(source)
   const out = fields.map((f) => {
     const row = rows.find((r) => r.name === f.name)
-    const readable = row ? decrypt(row) !== null : false
+    const value = row ? decrypt(row) : null
+    const readable = value !== null
     const fromEnv = Boolean(f.env())
     return {
       name: f.name,
@@ -167,7 +198,8 @@ export const credentialStatus = async (source) => {
       optional: Boolean(f.optional),
       set: readable || fromEnv,
       from: readable ? 'admin' : fromEnv ? 'server' : null,
-      hint: readable && !f.secret ? row.hint : null,
+      // IDs: last 4 of each ("4821, 9907")
+      hint: readable && !f.secret ? String(value).split(',').map((x) => x.trim().slice(-4)).filter(Boolean).join(', ') : null,
       unreadable: Boolean(row && !readable),
       updated_at: row?.updated_at ?? null,
       updated_by_name: row?.updated_by_name ?? null,
@@ -191,7 +223,7 @@ export const setCredentialValues = async (source, values, actorId) => {
   const fields = FIELDS[source] ?? []
   const touched = Object.keys(values)
   if (!values.connection && touched.some((k) => ['page_access_token', 'access_token'].includes(k))) {
-    values = { ...values, connection: '', ...(source === 'linkedin' && { refresh_token: '' }) }
+    values = { ...values, connection: '', ...(source === 'linkedin' && { refresh_token: '' }), ...(source === 'meta' && { pages: '' }) }
   }
   const saved = []
   const cleared = []
@@ -233,9 +265,9 @@ export const saveCredentials = async (req, source, values, password) => {
     if (values[f.name].trim().length > 4000) throw fail(400, `${f.label} is too long`)
   }
   if (source === 'linkedin' && values.ad_account_id?.trim()) {
-    const id = normalizeAdAccountId(values.ad_account_id)
-    if (!id) throw fail(400, 'The Ad account ID should be the number from LinkedIn Campaign Manager, e.g. 512345678')
-    values = { ...values, ad_account_id: id }
+    const ids = normalizeAdAccountIds(values.ad_account_id)
+    if (!ids) throw fail(400, 'Ad account IDs should be the numbers from LinkedIn Campaign Manager, e.g. 512345678, 498765432')
+    values = { ...values, ad_account_id: ids.join(',') }
   }
   try {
     await reauthenticate(actor, password)
@@ -293,17 +325,17 @@ export const testConnection = async (source, { fetchImpl = fetch } = {}) => {
         : { ok: false, message: `WhatsApp: ${apiError(r)}` }
     }
     if (source === 'linkedin') {
-      if (!c.accessToken || !c.adAccountId) return { ok: false, message: 'Add the access token and ad account ID first' }
-      const res = await linkedInFetch(
-        `https://api.linkedin.com/rest/adAccounts/${encodeURIComponent(c.adAccountId)}`,
-        { headers: { Authorization: `Bearer ${c.accessToken}` } },
-        fetchImpl
-      )
-      const r = { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }
-      if (r.ok) return { ok: true, message: `Connected to the ad account "${r.data.name ?? c.adAccountId}"` }
-      // 403 = the token works but the app can't read ad accounts (no Advertising API) — leads still import
-      if (r.status === 403) return { ok: true, message: 'The LinkedIn token works (this app can\'t read ad account details, which lead import doesn\'t need)' }
-      return { ok: false, message: `LinkedIn: ${apiError(r)}` }
+      if (!c.accessToken || !c.adAccountIds.length) return { ok: false, message: 'Add the access token and ad account ID first' }
+      const names = []
+      for (const id of c.adAccountIds) {
+        const res = await linkedInFetch(`https://api.linkedin.com/rest/adAccounts/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${c.accessToken}` } }, fetchImpl)
+        const r = { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) }
+        if (r.ok) names.push(`"${r.data.name ?? id}"`)
+        // 403 = the token works but the app can't read ad accounts (no Advertising API) — leads still import
+        else if (r.status === 403) return { ok: true, message: 'The LinkedIn token works (this app can\'t read ad account details, which lead import doesn\'t need)' }
+        else return { ok: false, message: `LinkedIn (ad account ${id}): ${apiError(r)}` }
+      }
+      return { ok: true, message: `Connected to ${names.length > 1 ? 'the ad accounts' : 'the ad account'} ${names.join(', ')}` }
     }
     return { ok: false, message: 'Nothing to test for this integration' }
   } catch (err) {

@@ -17,6 +17,7 @@ import { autoAssign } from '../crm/distribution.service.js'
 import { findDuplicates, findStudentId, normalizeEmail, normalizePhone } from '../crm/leads.service.js'
 import * as meta from './meta.adapter.js'
 import * as linkedin from './linkedin.adapter.js'
+import { getCredentials } from './credentials.js'
 
 export const SOURCES = ['meta', 'linkedin', 'website', 'whatsapp']
 const parseJson = (v) => (typeof v === 'string' ? JSON.parse(v) : v ?? null)
@@ -119,15 +120,24 @@ export const ingestLead = async (source, lead) => {
 // ── Processing (called by the queue worker) ──────────────────────────────
 
 const fetchAndMap = async (source, payload, config) => {
-  if (source === 'meta') return meta.mapLead(await meta.fetchLead(payload.external_id), config)
+  if (source === 'meta') {
+    const lead = meta.mapLead(await meta.fetchLead(payload.external_id, { pageId: payload.page_id }), config)
+    if (payload.page_id) {
+      const { pages } = await getCredentials('meta')
+      lead.source_meta.page_id = String(payload.page_id)
+      lead.source_meta.page = pages.find((p) => String(p.id) === String(payload.page_id))?.name ?? undefined
+    }
+    return lead
+  }
   if (source === 'linkedin') {
     const questions = await linkedin.formQuestions(payload.response?.versionedLeadGenFormUrn ?? payload.response?.leadGenFormUrn)
     const lead = linkedin.mapResponse(payload.response, questions, config)
+    if (payload.account_id) lead.source_meta.ad_account = String(payload.account_id)
     // Campaign name instead of "urn:li:sponsoredCampaign:…" (never blocks the import)
     const campaignId = linkedin.campaignIdOf(lead.source_meta?.campaign)
     if (campaignId) {
       lead.source_meta.campaign_id = campaignId
-      lead.source_meta.campaign = (await linkedin.campaignName(campaignId)) ?? `LinkedIn campaign ${campaignId}`
+      lead.source_meta.campaign = (await linkedin.campaignName(campaignId, { accountId: payload.account_id })) ?? `LinkedIn campaign ${campaignId}`
     }
     return lead
   }
@@ -213,29 +223,60 @@ export const fillLinkedInCampaignNames = async ({ limit = 500 } = {}) => {
   return updated
 }
 
+/** Per-account cursors: {"512345678": 1731700000000}. An older single number applies to every account. */
+const readCursors = (raw, accounts) => {
+  try {
+    const v = JSON.parse(raw ?? 'null')
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v
+    if (Number(v)) return Object.fromEntries(accounts.map((a) => [a, Number(v)]))
+  } catch {
+    /* empty or broken: start fresh */
+  }
+  return {}
+}
+
 export const syncLinkedIn = async (enqueue) => {
   const integration = await getIntegration('linkedin')
   if (!integration.enabled) return { skipped: 'disabled' }
-  try {
-    const since = Number(integration.sync_cursor) || Date.now() - 7 * 86400e3
-    const responses = await linkedin.fetchResponses(since)
-    let latest = since
-    let queued = 0
-    for (const r of responses) {
-      if (!r?.id) continue
-      latest = Math.max(latest, Number(r.submittedAt) || 0)
-      const { id, isNew } = await recordEvent('linkedin', String(r.id), { response: r })
-      if (isNew) {
-        await enqueue(id)
-        queued++
-      }
-    }
-    await pool.query('UPDATE integrations SET sync_cursor = ? WHERE source = ?', [String(latest), 'linkedin'])
-    await markHealth('linkedin', true)
-    await fillLinkedInCampaignNames().catch((err) => console.error('LinkedIn campaign names failed:', err.message))
-    return { fetched: responses.length, queued }
-  } catch (err) {
-    await markHealth('linkedin', false, err.message)
-    return { error: err.message }
+  const { adAccountIds } = await getCredentials('linkedin')
+  if (!adAccountIds.length) {
+    await markHealth('linkedin', false, 'No LinkedIn ad account set (Admin → Integrations)')
+    return { error: 'No LinkedIn ad account set' }
   }
+  const cursors = readCursors(integration.sync_cursor, adAccountIds)
+  let fetched = 0
+  let queued = 0
+  const errors = []
+  // One account failing doesn't stop the others
+  for (const accountId of adAccountIds) {
+    try {
+      const since = Number(cursors[accountId]) || Date.now() - 7 * 86400e3
+      const responses = await linkedin.fetchResponses(since, { accountId })
+      let latest = since
+      for (const r of responses) {
+        if (!r?.id) continue
+        latest = Math.max(latest, Number(r.submittedAt) || 0)
+        const { id, isNew } = await recordEvent('linkedin', String(r.id), { response: r, account_id: accountId })
+        if (isNew) {
+          await enqueue(id)
+          queued++
+        }
+      }
+      fetched += responses.length
+      cursors[accountId] = latest
+    } catch (err) {
+      errors.push(adAccountIds.length > 1 ? `Ad account ${accountId}: ${err.message}` : err.message)
+    }
+  }
+  // Forget cursors of accounts that were removed
+  const kept = Object.fromEntries(adAccountIds.filter((a) => cursors[a]).map((a) => [a, cursors[a]]))
+  await pool.query('UPDATE integrations SET sync_cursor = ? WHERE source = ?', [JSON.stringify(kept), 'linkedin'])
+  if (errors.length) {
+    await markHealth('linkedin', false, errors.join(' · '))
+    if (errors.length === adAccountIds.length) return { error: errors.join(' · ') }
+  } else {
+    await markHealth('linkedin', true)
+  }
+  await fillLinkedInCampaignNames().catch((err) => console.error('LinkedIn campaign names failed:', err.message))
+  return { fetched, queued, accounts: adAccountIds.length, ...(errors.length && { partial_errors: errors }) }
 }

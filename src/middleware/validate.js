@@ -441,9 +441,10 @@ const schemas = {
     error: Joi.string().max(200).optional(),
   }).or('code', 'error'),
   integrationOAuthChoose: Joi.object({
-    selection: Joi.string().max(20000).required(),
-    id: Joi.string().max(100).required(),
-  }),
+    selection: Joi.string().max(60000).required(),
+    id: Joi.string().max(100).optional(),
+    ids: Joi.array().items(Joi.string().max(100)).min(1).max(100).optional(),
+  }).or('id', 'ids'),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),
