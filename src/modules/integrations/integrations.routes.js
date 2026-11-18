@@ -12,7 +12,7 @@ import { validate, schemas } from '../../middleware/validate.js'
 import { success } from '../../utils/response.js'
 import { audit } from '../../utils/audit.js'
 import { enqueueIngest } from '../../jobs/leadIngestQueue.js'
-import { getIntegration, recordEvent, SOURCES, syncLinkedIn } from './ingest.service.js'
+import { getIntegration, recordEvent, SOURCES, syncLinkedIn, syncMeta } from './ingest.service.js'
 import * as meta from './meta.adapter.js'
 import * as whatsapp from './whatsapp.adapter.js'
 import * as linkedinAdapter from './linkedin.adapter.js'
@@ -258,6 +258,22 @@ admin.post('/:source/retry-failed', ...managers, async (req, res, next) => {
     for (const id of ids) await enqueueIngest(id)
     await audit(req, { action: 'integration.retry_failed', targetType: 'integration', details: { source, count: ids.length } })
     return success(res, { message: `${ids.length} queued for another try`, data: { queued: ids.length } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Facebook: read leads from the forms now; { days } (1–90) also imports older ones
+admin.post('/meta/sync', ...managers, async (req, res, next) => {
+  try {
+    const days = Number(req.body?.days) || null
+    if (days !== null && (days < 1 || days > 90)) return res.status(400).json({ success: false, message: 'Choose between 1 and 90 days' })
+    const r = await syncMeta(enqueueIngest, { days })
+    if (r.skipped) return res.status(400).json({ success: false, message: 'Turn the Meta integration on first' })
+    if (r.error) return res.status(502).json({ success: false, message: `Facebook: ${r.error}` })
+    if (days) await audit(req, { action: 'integration.import_past', targetType: 'integration', details: { source: 'meta', days, queued: r.queued } })
+    const problems = r.partial_errors?.length ? ` (${r.partial_errors.join(' · ')})` : ''
+    return success(res, { message: `${r.fetched} found in ${r.forms} form${r.forms === 1 ? '' : 's'}, ${r.queued} new${problems}`, data: r })
   } catch (err) {
     next(err)
   }

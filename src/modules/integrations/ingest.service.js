@@ -121,7 +121,8 @@ export const ingestLead = async (source, lead) => {
 
 const fetchAndMap = async (source, payload, config) => {
   if (source === 'meta') {
-    const lead = meta.mapLead(await meta.fetchLead(payload.external_id, { pageId: payload.page_id }), config)
+    // Leads found by the sync already carry their details; webhook leads are fetched now
+    const lead = meta.mapLead(payload.prefetched ?? (await meta.fetchLead(payload.external_id, { pageId: payload.page_id })), config)
     if (payload.page_id) {
       const { pages } = await getCredentials('meta')
       lead.source_meta.page_id = String(payload.page_id)
@@ -210,6 +211,62 @@ export const ingestWebsiteEnquiry = async ({ contactId, name, email, phone, subj
     console.error('Website enquiry → lead failed:', err.message)
     return null
   }
+}
+
+// ── Facebook sync (polling — alongside the webhook) ────────────────────────
+
+/**
+ * Read recent leads straight from each form, as a back-up to the webhook
+ * (catches leads the webhook missed, and imports leads from before
+ * connecting). `days` (1–90) looks further back once; otherwise it continues
+ * from the last sync (first time: 7 days). Leads already seen — from the
+ * webhook or an earlier sync — are not created again.
+ */
+export const syncMeta = async (enqueue, { days = null } = {}) => {
+  const integration = await getIntegration('meta')
+  if (!integration.enabled) return { skipped: 'disabled' }
+  const nowSec = Date.now() / 1000
+  const cursor = Number(integration.sync_cursor) || null
+  const since = days ? nowSec - Math.min(90, Math.max(1, days)) * 86400 : cursor ?? nowSec - 7 * 86400
+  const chosen = Array.isArray(integration.config?.selected_forms) ? new Set(integration.config.selected_forms.map(String)) : null
+
+  const { forms, errors } = await meta.listForms()
+  const wanted = forms.filter((f) => (chosen ? chosen.has(f.id) : f.status !== 'deleted'))
+  let fetched = 0
+  let queued = 0
+  let latest = cursor ?? since
+  for (const form of wanted) {
+    try {
+      const leads = await meta.fetchFormLeads(form, since)
+      fetched += leads.length
+      for (const l of leads) {
+        if (!l?.id) continue
+        latest = Math.max(latest, Date.parse(l.created_time) / 1000 || 0)
+        const { id, isNew } = await recordEvent('meta', String(l.id), {
+          external_id: String(l.id),
+          form_id: form.id,
+          page_id: form.owner_id,
+          ad_id: l.ad_id ?? null,
+          prefetched: l,
+        })
+        if (isNew) {
+          await enqueue(id)
+          queued++
+        }
+      }
+    } catch (err) {
+      errors.push(`${form.name}: ${err.message}`)
+    }
+  }
+  // Never move the cursor backwards (a look-back import doesn't reset it)
+  await pool.query('UPDATE integrations SET sync_cursor = ? WHERE source = ?', [String(Math.floor(Math.max(latest, cursor ?? 0))), 'meta'])
+  if (!forms.length && errors.length) {
+    await markHealth('meta', false, errors.join(' · '))
+    return { error: errors.join(' · ') }
+  }
+  if (errors.length) await markHealth('meta', false, errors.join(' · '))
+  else await markHealth('meta', true)
+  return { fetched, queued, forms: wanted.length, ...(errors.length && { partial_errors: errors }) }
 }
 
 // ── LinkedIn sync (polling) ───────────────────────────────────────────────
