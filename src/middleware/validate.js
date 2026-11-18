@@ -455,6 +455,27 @@ const schemas = {
     id: Joi.string().max(100).optional(),
     ids: Joi.array().items(Joi.string().max(100)).min(1).max(100).optional(),
   }).or('id', 'ids'),
+  // Guest checkout (payments/guest/*)
+  guestCheckout: Joi.object({
+    course_id: Joi.number().integer().positive().required(),
+    name: Joi.string().trim().min(2).max(150).required(),
+    email: Joi.string().trim().email().max(150).lowercase().required(),
+    phone: Joi.string().trim().pattern(/^[+\d][\d\s()-]{6,24}$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'Enter a valid phone number' }),
+    consent: Joi.boolean().valid(true).required().messages({ 'any.only': 'Please accept the terms to continue' }),
+  }),
+  guestRazorpayVerify: Joi.object({
+    guest_token: Joi.string().max(2000).required(),
+    payment_id: Joi.number().integer().positive().required(),
+    razorpay_order_id: Joi.string().max(100).required(),
+    razorpay_payment_id: Joi.string().max(100).required(),
+    razorpay_signature: Joi.string().max(200).required(),
+  }),
+  guestPaypalCapture: Joi.object({
+    guest_token: Joi.string().max(2000).required(),
+    payment_id: Joi.number().integer().positive().required(),
+    paypal_order_id: Joi.string().max(100).required(),
+  }),
   // Public course-page enquiry forms (enquiries module)
   enquiry: Joi.object({
     kind: Joi.string().valid('advisor', 'syllabus', 'team').required(),

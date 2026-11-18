@@ -45,4 +45,13 @@ const enquiryLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-export { loginLimiter, registerLimiter, apiLimiter, passwordResetLimiter, enquiryLimiter }
+// Guest checkout: starting / finishing payments without a login
+const guestCheckoutLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: env.isProd ? 30 : 500,
+  message: { success: false, message: 'Too many checkout attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+export { loginLimiter, registerLimiter, apiLimiter, passwordResetLimiter, enquiryLimiter, guestCheckoutLimiter }

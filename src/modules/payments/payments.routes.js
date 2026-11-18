@@ -7,8 +7,16 @@ import role from '../../middleware/role.js'
 import { LEARNER_ROLES } from '../../constants.js'
 import permission from '../../middleware/permission.js'
 import express from 'express'
+import { validate, schemas } from '../../middleware/validate.js'
+import { guestCheckoutLimiter } from '../../middleware/rateLimit.js'
 
 const router = Router()
+
+// ─── GUEST CHECKOUT (no login; guest token authorises verify / capture) ───
+router.post('/guest/razorpay/create-order', guestCheckoutLimiter, validate(schemas.guestCheckout), controller.guestRazorpayCreateOrder)
+router.post('/guest/razorpay/verify', guestCheckoutLimiter, validate(schemas.guestRazorpayVerify), controller.guestRazorpayVerify)
+router.post('/guest/paypal/create-order', guestCheckoutLimiter, validate(schemas.guestCheckout), controller.guestPaypalCreateOrder)
+router.post('/guest/paypal/capture', guestCheckoutLimiter, validate(schemas.guestPaypalCapture), controller.guestPaypalCapture)
 
 // ─── RAZORPAY ─────────────────────────────────────────────────
 router.post('/razorpay/create-order', authenticate, role(...LEARNER_ROLES), controller.razorpayCreateOrder)

@@ -2,6 +2,7 @@
 
 import { regionForRequest } from '../../utils/geo.js'
 import * as service from './payments.service.js'
+import * as guest from './guestCheckout.service.js'
 import { success } from '../../utils/response.js'
 
 // ── POST /payments/razorpay/create-order ───────────────────────────────────
@@ -111,3 +112,18 @@ export {
   getAllPayments,
   getRevenueStats,
 }
+
+// ── Guest checkout (no login; see guestCheckout.service.js) ─────────────────
+const guestHandler = (fn, message, statusCode = 200, withRegion = false) => async (req, res, next) => {
+  try {
+    const data = await fn(req.body, withRegion ? regionForRequest(req) : undefined)
+    return success(res, { statusCode, message, data })
+  } catch (err) {
+    next(err)
+  }
+}
+export const guestRazorpayCreateOrder = guestHandler(guest.guestRazorpayCreateOrder, 'Razorpay order created', 201, true)
+export const guestRazorpayVerify = guestHandler(guest.guestRazorpayVerify, 'Payment verified')
+export const guestPaypalCreateOrder = guestHandler(guest.guestPaypalCreateOrder, 'PayPal order created', 201, true)
+export const guestPaypalCapture = guestHandler(guest.guestPaypalCapture, 'Payment captured')
+
