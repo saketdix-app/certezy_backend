@@ -25,7 +25,9 @@ export const LEARNER_ROLES = ['student', 'super_admin', 'admin', 'sub_admin']
 
 // ── 2.0 roles & privileges (PRD §1–3) ────────────────────────────────────
 // Staff roles, most powerful first. 'consultant' is the sales team (CRM, phase 3).
-export const STAFF_ROLES = ['super_admin', 'admin', 'sub_admin', 'consultant']
+// 'exam_coordinator' works with students on the leads assigned to them to
+// schedule and complete the exam; the lead stays owned by its consultant.
+export const STAFF_ROLES = ['super_admin', 'admin', 'sub_admin', 'consultant', 'exam_coordinator']
 
 // Delegated privileges a Super Admin can grant to an Admin. Recorded in
 // user_permission_grants with grantor, time and revocation (PRD §2.1).

@@ -5,6 +5,7 @@ import {
   FOLLOW_UP_TYPES,
   SOURCES as LEAD_SOURCES,
   STAGES as LEAD_STAGES,
+  TICKET_CURRENCIES,
 } from '../modules/crm/crm.constants.js'
 import { STAFF_PERMISSIONS } from '../constants.js'
 import Joi from 'joi'
@@ -320,7 +321,7 @@ const createSubAdminSchema = Joi.object({
 })
 
 // ── 2.0 Team (staff accounts) ────────────────────────────────────────────
-const staffRole = Joi.string().valid('super_admin', 'admin', 'sub_admin', 'consultant')
+const staffRole = Joi.string().valid('super_admin', 'admin', 'sub_admin', 'consultant', 'exam_coordinator')
 const reauthPassword = Joi.string().max(72).allow('', null).optional()
 
 const schemas = {
@@ -366,10 +367,26 @@ const schemas = {
     email: Joi.string().trim().email().max(150).lowercase().allow('', null).optional(),
     course_id: Joi.number().integer().positive().allow(null).optional(),
     preferred_schedule: Joi.string().trim().max(150).allow('', null).optional(),
+    ticket_size: Joi.number().positive().max(100000000).precision(2).allow(null).optional(),
+    ticket_currency: Joi.string().valid(...TICKET_CURRENCIES).allow(null).optional(),
   }),
   changeLeadStage: Joi.object({
     stage: Joi.string().valid(...LEAD_STAGES).required(),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
+    // required by the service when moving to Application
+    ticket_size: Joi.number().positive().max(100000000).precision(2).optional(),
+    ticket_currency: Joi.string().valid(...TICKET_CURRENCIES).optional(),
+  }),
+  leadExamCoordinator: Joi.object({
+    exam_coordinator_id: Joi.number().integer().positive().allow(null).required(),
+  }),
+  leadExam: Joi.object({
+    status: Joi.string().valid('not_scheduled', 'scheduled', 'completed').required(),
+    scheduled_at: Joi.date().iso().allow(null).optional(),
+    completed_at: Joi.date().iso().max('now').allow(null).optional()
+      .messages({ 'date.max': "The exam completion date can't be in the future" }),
+    result: Joi.string().valid('passed', 'failed').allow(null).optional(),
+    note: Joi.string().trim().max(255).allow('', null).optional(),
   }),
   leadActivity: Joi.object({
     type: Joi.string().valid(...LEAD_ACTIVITY_TYPES).required(),
