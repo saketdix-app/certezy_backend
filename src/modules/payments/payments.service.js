@@ -19,7 +19,9 @@ import { createEnrollment } from '../enrollments/enrollments.service.js'
 import { attributeSale } from '../crm/sales.service.js'
 import { generateInvoice } from '../../utils/invoice.js'
 import { generateInvoiceNumber } from '../../utils/generate.js'
-import { sendInvoiceJob } from '../../jobs/emailQueue.js'
+import { sendAccountReadyJob, sendInvoiceJob } from '../../jobs/emailQueue.js'
+import { issuePasswordLink } from '../auth/passwordReset.js'
+import { pool } from '../../config/db.js'
 import { markDiscountUsed, verifyDiscountToken } from '../discounts/discounts.service.js'
 import * as discountQueries from '../discounts/discounts.queries.js'
 import { checkEnrollment } from '../enrollments/enrollments.service.js'
@@ -237,7 +239,23 @@ const handlePaymentSuccess = async ({ payment_id, gateway_txn_id, user, courseTi
     console.error(`Invoice email for payment ${payment_id} failed:`, err.message)
   }
 
+  // Bought without an account (guest checkout): email a "set your password"
+  // link — also covers a payment confirmed only by the webhook
+  await sendAccountReadyIfNeeded(payment.user_id, courseTitle)
+
   return { invoice_url }
+}
+
+const ACCOUNT_LINK_MINUTES = 7 * 24 * 60
+export const sendAccountReadyIfNeeded = async (userId, courseTitle) => {
+  try {
+    const [[u]] = await pool.query("SELECT id, name, email, password, oauth_provider FROM users WHERE id = ? LIMIT 1", [userId])
+    if (!u || u.password || (u.oauth_provider && u.oauth_provider !== 'local')) return
+    const setUrl = await issuePasswordLink(u.id, ACCOUNT_LINK_MINUTES)
+    await sendAccountReadyJob({ to: u.email, name: u.name, courseTitle, setUrl, days: 7 })
+  } catch (err) {
+    console.error(`Account-ready email for user ${userId} failed:`, err.message)
+  }
 }
 
 // ── Get payment by ID (internal) ───────────────────────────────────────────

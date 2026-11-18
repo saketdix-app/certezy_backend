@@ -261,6 +261,24 @@ const sendSecurityNoticeMail = (to, { name, title, lines = [] }) =>
     `,
   })
 
+// Bought a course without an account (guest checkout): set a password to start
+const sendAccountReadyMail = (to, { name, courseTitle, setUrl, days = 7 }) =>
+  sendMail({
+    to,
+    replyTo: env.supportEmail,
+    subject: `Your course is ready — set your CERTEZY password`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p>Thanks for your purchase. <b>${escapeHtml(courseTitle)}</b> is now in your CERTEZY account.</p>
+        <p>Set a password to sign in and start learning:</p>
+        <p><a href="${setUrl}" style="background:#236a9e;color:#ffffff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Set my password</a></p>
+        <p style="font-size:13px;color:#5e6e85">This link works for ${days} days. After that, use “Forgot password” on the sign-in page with this email.<br>
+          Your receipt is in a separate email. Questions? Reply to this email.</p>
+      </div>
+    `,
+  })
+
 // Course syllabus, sent when someone asks for it on the course page
 const sendSyllabusMail = (to, { name, courseTitle, courseUrl, sections = [] }) =>
   sendMail({
@@ -286,6 +304,7 @@ const sendSyllabusMail = (to, { name, courseTitle, courseUrl, sections = [] }) =
   })
 
 export {
+  sendAccountReadyMail,
   sendSyllabusMail,
   sendStaffInviteMail,
   sendSecurityNoticeMail,
