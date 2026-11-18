@@ -15,6 +15,7 @@ import { enqueueIngest } from '../../jobs/leadIngestQueue.js'
 import { getIntegration, recordEvent, SOURCES, syncLinkedIn } from './ingest.service.js'
 import * as meta from './meta.adapter.js'
 import * as whatsapp from './whatsapp.adapter.js'
+import * as linkedinAdapter from './linkedin.adapter.js'
 import { handleInbound, handleStatus } from './whatsapp.service.js'
 import { credentialStatus, getCredentials, saveCredentials, testConnection } from './credentials.js'
 import { chooseConnect, finishConnect, integrationAlerts, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
@@ -110,6 +111,18 @@ const managers = [authenticate, role('admin')]
 admin.get('/alerts', ...managers, async (req, res, next) => {
   try {
     return success(res, { data: await integrationAlerts() })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Every lead form on the connected Pages / ad accounts, to pick from
+admin.get('/:source/forms', ...managers, async (req, res, next) => {
+  try {
+    const { source } = req.params
+    const lister = { meta: meta.listForms, linkedin: linkedinAdapter.listForms }[source]
+    if (!lister) return res.status(404).json({ success: false, message: 'This integration has no forms to list' })
+    return success(res, { data: await lister() })
   } catch (err) {
     next(err)
   }

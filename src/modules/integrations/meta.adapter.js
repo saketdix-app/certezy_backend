@@ -89,3 +89,45 @@ export const mapLead = (lead, config = {}) => {
       : { platform: 'meta', note: 'Submitted through a Meta lead form' },
   }
 }
+
+const FORM_STATUS = { ACTIVE: 'active', ARCHIVED: 'archived', DELETED: 'deleted', DRAFT: 'draft' }
+
+/**
+ * Every lead form on every connected Page, for picking in Admin → Integrations.
+ * → { forms: [{ id, name, status, leads_count, created_at, owner_id, owner_name }], errors: [] }
+ * (Needs pages_manage_ads / leads_retrieval; a Page that can't be read is reported, not fatal.)
+ */
+export const listForms = async ({ fetchImpl = fetch } = {}) => {
+  const { pages, graphVersion } = await getCredentials('meta')
+  const forms = []
+  const errors = []
+  for (const page of pages.filter((p) => p.token)) {
+    let after = null
+    try {
+      for (let n = 0; n < 10; n++) {
+        const q = new URLSearchParams({ fields: 'id,name,status,leads_count,created_time', limit: '100', ...(after && { after }) })
+        const res = await fetchImpl(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(page.id ?? 'me')}/leadgen_forms?${q}`, {
+          headers: { Authorization: `Bearer ${page.token}` },
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.error?.message ?? `error ${res.status}`)
+        for (const f of data.data ?? []) {
+          forms.push({
+            id: String(f.id),
+            name: f.name ?? `Form ${f.id}`,
+            status: FORM_STATUS[f.status] ?? (f.status ? String(f.status).toLowerCase() : null),
+            leads_count: f.leads_count ?? null,
+            created_at: f.created_time ?? null,
+            owner_id: page.id ?? null,
+            owner_name: page.name ?? null,
+          })
+        }
+        after = data.paging?.next ? data.paging?.cursors?.after : null
+        if (!after) break
+      }
+    } catch (err) {
+      errors.push(`${page.name ?? 'Page'}: ${err.message}`)
+    }
+  }
+  return { forms, errors }
+}
