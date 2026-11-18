@@ -648,6 +648,15 @@ const STEPS = [
     },
   },
   {
+    name: 'integrations.sync_cursor holds one cursor per LinkedIn ad account',
+    run: async () => {
+      const col = await columnInfo('integrations', 'sync_cursor')
+      if (!col || /text/i.test(col.COLUMN_TYPE)) return false
+      await pool.query('ALTER TABLE integrations MODIFY sync_cursor TEXT NULL')
+      return true
+    },
+  },
+  {
     name: 'integration_secrets table (API keys saved from Admin → Integrations, encrypted)',
     run: async () => {
       if (await tableExists('integration_secrets')) return false

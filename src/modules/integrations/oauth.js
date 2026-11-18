@@ -153,22 +153,34 @@ const metaPost = async (path, params, fetchImpl) => {
   return res.ok && data.success !== false ? { ok: true } : { ok: false, error: errText(data, res.status) }
 }
 
-const finishMeta = async (req, page, fetchImpl) => {
+const names = (list) => list.map((x) => `"${x.name}"`).join(', ')
+
+/** Save the chosen Pages (one or more) and subscribe each to lead events. */
+const finishMeta = async (req, pages, fetchImpl) => {
   const creds = await getCredentials('meta', { fresh: true })
   const verifyToken = creds.verifyToken || crypto.randomBytes(16).toString('hex')
   await setCredentialValues(
     'meta',
     {
-      page_access_token: page.token,
+      page_access_token: pages[0].token,
+      pages: JSON.stringify(pages.map(({ id, name, token }) => ({ id, name, token }))),
       verify_token: verifyToken,
-      connection: JSON.stringify({ page_id: page.id, page_name: page.name, connected_by: req.user.name, connected_at: new Date().toISOString() }),
+      connection: JSON.stringify({
+        pages: pages.map(({ id, name }) => ({ id, name })),
+        page_id: pages[0].id, // older code reads these
+        page_name: pages[0].name,
+        connected_by: req.user.name,
+        connected_at: new Date().toISOString(),
+      }),
     },
     req.user.id
   )
-  const steps = [{ ok: true, label: `Page "${page.name}" connected` }]
+  const steps = [{ ok: true, label: `${pages.length > 1 ? `${pages.length} Pages` : 'Page'} connected: ${names(pages)}` }]
 
-  const sub = await metaPost(`${encodeURIComponent(page.id)}/subscribed_apps`, { subscribed_fields: 'leadgen', access_token: page.token }, fetchImpl)
-  steps.push(sub.ok ? { ok: true, label: 'Page set to send new leads to the app' } : { ok: false, label: `Page subscription: ${sub.error}` })
+  for (const page of pages) {
+    const sub = await metaPost(`${encodeURIComponent(page.id)}/subscribed_apps`, { subscribed_fields: 'leadgen', access_token: page.token }, fetchImpl)
+    steps.push(sub.ok ? { ok: true, label: `"${page.name}" sends new leads to the app` } : { ok: false, label: `"${page.name}" subscription: ${sub.error}` })
+  }
 
   // Facebook calls our webhook straight away to check the verify token (saved above)
   const hook = await metaPost(
@@ -190,7 +202,7 @@ const finishMeta = async (req, page, fetchImpl) => {
     const ends = [h?.expires_at, h?.data_access_expires_at].filter(Boolean).sort()[0]
     if (ends) steps.push({ ok: true, label: `Facebook allows access until ${new Date(ends).toDateString()} — you'll be reminded a week before` })
   }
-  return { source: 'meta', name: page.name, steps }
+  return { source: 'meta', name: pages.map((p) => p.name).join(', '), steps }
 }
 
 // ── LinkedIn ──────────────────────────────────────────────────────────────
@@ -229,10 +241,12 @@ const linkedInAccounts = async (token, fetchImpl) => {
   return out
 }
 
-const finishLinkedIn = async (req, tokens, account) => {
+/** Save the token and the chosen ad accounts (none if the app can't list them). */
+const finishLinkedIn = async (req, tokens, accounts) => {
   const connection = {
-    account_id: account?.id ?? null,
-    account_name: account?.name ?? null,
+    accounts: accounts.map(({ id, name }) => ({ id, name })),
+    account_id: accounts[0]?.id ?? null, // older code reads these
+    account_name: accounts.map((a) => a.name).join(', ') || null,
     connected_by: req.user.name,
     connected_at: new Date().toISOString(),
     expires_at: tokens.expires_at,
@@ -244,7 +258,7 @@ const finishLinkedIn = async (req, tokens, account) => {
     {
       access_token: tokens.access,
       refresh_token: tokens.refresh,
-      ...(account && { ad_account_id: account.id }),
+      ...(accounts.length && { ad_account_id: accounts.map((a) => a.id).join(',') }),
       connection: JSON.stringify(connection),
     },
     req.user.id
@@ -252,14 +266,14 @@ const finishLinkedIn = async (req, tokens, account) => {
   const until = (iso) => new Date(iso).toDateString()
   const steps = [
     { ok: true, label: 'LinkedIn access token saved' },
-    account
-      ? { ok: true, label: `Ad account "${account.name}" selected` }
-      : { ok: false, label: "This app can't list ad accounts — type the Ad account ID under Change keys" },
+    accounts.length
+      ? { ok: true, label: `${accounts.length > 1 ? `${accounts.length} ad accounts` : 'Ad account'} selected: ${names(accounts)}` }
+      : { ok: false, label: "This app can't list ad accounts — type the Ad account IDs under Change keys" },
     tokens.refresh
       ? { ok: true, label: `Renews automatically (until ${until(tokens.refresh_expires_at ?? tokens.expires_at)})` }
       : { ok: false, label: `LinkedIn gave no renewal token — click Connect again before ${until(tokens.expires_at)}` },
   ]
-  return { source: 'linkedin', name: account?.name ?? 'LinkedIn', steps }
+  return { source: 'linkedin', name: accounts.map((a) => a.name).join(', ') || 'LinkedIn', steps }
 }
 
 // ── Finish (the browser comes back from the platform) ─────────────────────
@@ -298,8 +312,15 @@ export const finishConnect = async (req, source, { code, state, error }, { fetch
     const longLived = await metaToken({ grant_type: 'fb_exchange_token', client_id: creds.appId, client_secret: creds.appSecret, fb_exchange_token: shortLived }, fetchImpl)
     const pages = await metaPages(longLived, fetchImpl)
     if (!pages.length) throw fail(400, 'No Facebook Pages came back — click Connect again and tick your Page when Facebook asks')
-    if (pages.length === 1) return done(req, await finishMeta(req, pages[0], fetchImpl))
-    return { status: 'choose', options: pages.map(({ id, name }) => ({ id, name })), selection: sealSelection(req, source, { pages }) }
+    if (pages.length === 1) return done(req, await finishMeta(req, pages, fetchImpl))
+    // Tick one or more; the ones connected before start ticked
+    const was = new Set((creds.connection?.pages ?? []).map((p) => p.id))
+    return {
+      status: 'choose',
+      multiple: true,
+      options: pages.map(({ id, name }) => ({ id, name, selected: was.size ? was.has(id) : true })),
+      selection: sealSelection(req, source, { pages }),
+    }
   }
 
   const tokens = await linkedInToken(
@@ -307,22 +328,29 @@ export const finishConnect = async (req, source, { code, state, error }, { fetch
     fetchImpl
   )
   const accounts = await linkedInAccounts(tokens.access, fetchImpl)
-  if (accounts.length <= 1) return done(req, await finishLinkedIn(req, tokens, accounts[0]))
-  return { status: 'choose', options: accounts, selection: sealSelection(req, source, { tokens, accounts }) }
+  if (accounts.length <= 1) return done(req, await finishLinkedIn(req, tokens, accounts))
+  const was = new Set((creds.connection?.accounts ?? []).map((a) => a.id))
+  return {
+    status: 'choose',
+    multiple: true,
+    options: accounts.map(({ id, name }) => ({ id, name, selected: was.size ? was.has(id) : true })),
+    selection: sealSelection(req, source, { tokens, accounts }),
+  }
 }
 
-/** Step 3 (only when there was more than one Page / ad account). */
-export const chooseConnect = async (req, source, { selection, id }, { fetchImpl = fetch } = {}) => {
+/** Step 3 (only when there was more than one Page / ad account): { ids: [...] } (or { id }). */
+export const chooseConnect = async (req, source, { selection, id, ids }, { fetchImpl = fetch } = {}) => {
   await requireSuper(req, source, 'integration.connect')
   const s = openSelection(req, source, selection)
+  const wanted = new Set((ids ?? (id !== undefined ? [id] : [])).map(String))
   if (source === 'meta') {
-    const page = s.pages.find((p) => p.id === String(id))
-    if (!page) throw fail(400, 'Choose one of the listed Pages')
-    return done(req, await finishMeta(req, page, fetchImpl))
+    const pages = s.pages.filter((p) => wanted.has(p.id))
+    if (!pages.length) throw fail(400, 'Choose at least one of the listed Pages')
+    return done(req, await finishMeta(req, pages, fetchImpl))
   }
-  const account = s.accounts.find((a) => a.id === String(id))
-  if (!account) throw fail(400, 'Choose one of the listed ad accounts')
-  return done(req, await finishLinkedIn(req, s.tokens, account))
+  const accounts = s.accounts.filter((a) => wanted.has(a.id))
+  if (!accounts.length) throw fail(400, 'Choose at least one of the listed ad accounts')
+  return done(req, await finishLinkedIn(req, s.tokens, accounts))
 }
 
 // ── LinkedIn renewal (queue worker, every few hours) ──────────────────────

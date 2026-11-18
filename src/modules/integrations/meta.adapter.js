@@ -26,9 +26,19 @@ export const parseWebhook = (body) => {
 
 const FIELDS = 'id,created_time,field_data,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,platform,is_organic,custom_disclaimer_responses'
 
-/** Fetch the full lead from the Graph API. Throws on network / API errors (retried by the queue). */
-export const fetchLead = async (leadgenId, { fetchImpl = fetch } = {}) => {
-  const { pageAccessToken, graphVersion } = await getCredentials('meta')
+/**
+ * Fetch the full lead from the Graph API with the token of the Page it came
+ * from (several Pages can be connected). Throws on network / API errors
+ * (retried by the queue).
+ */
+export const fetchLead = async (leadgenId, { pageId = null, fetchImpl = fetch } = {}) => {
+  const { pages, pageAccessToken: primary, graphVersion } = await getCredentials('meta')
+  const page = pageId ? pages.find((p) => String(p.id) === String(pageId)) : null
+  if (pageId && !page && pages.some((p) => p.id)) {
+    // A lead from a Page that isn't connected (any more): keep it for a retry after Reconnect
+    throw Object.assign(new Error(`Page ${pageId} isn't connected — Reconnect Facebook and tick it, then Retry`), { permanent: true })
+  }
+  const pageAccessToken = page?.token ?? primary
   if (!pageAccessToken) throw new Error('The Meta Page access token is not set (Admin → Integrations)')
   const url = `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(leadgenId)}?fields=${FIELDS}`
   const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${pageAccessToken}` } })

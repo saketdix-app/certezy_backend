@@ -21,8 +21,10 @@ const get = async (path, fetchImpl) => {
 }
 
 /** Form responses submitted after `sinceMs`. */
-export const fetchResponses = async (sinceMs, { fetchImpl = fetch } = {}) => {
-  const { accessToken, adAccountId } = await getCredentials('linkedin')
+export const fetchResponses = async (sinceMs, { accountId = null, fetchImpl = fetch } = {}) => {
+  const creds = await getCredentials('linkedin')
+  const { accessToken } = creds
+  const adAccountId = accountId ?? creds.adAccountId
   if (!accessToken || !adAccountId) throw new Error('The LinkedIn access token / ad account ID are not set (Admin → Integrations)')
   if (!/^\d+$/.test(adAccountId)) {
     throw new Error('The LinkedIn Ad account ID isn\'t a number — enter just the number from Campaign Manager (e.g. 512345678) under Change keys')
@@ -143,22 +145,27 @@ const MISS_RETRY_MS = 6 * 60 * 60 * 1000
 export const campaignIdOf = (value) => String(value ?? '').match(/^(?:urn:li:sponsoredCampaign:|LinkedIn campaign )(\d+)$/)?.[1] ?? null
 
 /** The campaign's name from LinkedIn, or null if it can't be read right now. */
-export const campaignName = async (campaignId, { fetchImpl = fetch } = {}) => {
+export const campaignName = async (campaignId, { accountId = null, fetchImpl = fetch } = {}) => {
   if (!campaignId) return null
   if (campaignNames.has(campaignId)) return campaignNames.get(campaignId)
   if (Date.now() - (campaignMisses.get(campaignId) ?? 0) < MISS_RETRY_MS) return null
-  try {
-    const { adAccountId } = await getCredentials('linkedin')
-    if (!/^\d+$/.test(adAccountId ?? '')) throw new Error('no ad account')
-    const d = await get(`/adAccounts/${adAccountId}/adCampaigns/${campaignId}`, fetchImpl)
-    const name = typeof d?.name === 'string' && d.name.trim() ? d.name.trim() : null
-    if (!name) throw new Error('no name')
-    campaignNames.set(campaignId, name)
-    return name
-  } catch {
-    campaignMisses.set(campaignId, Date.now())
-    return null
+  // The campaign's own account first; otherwise try each connected account
+  const { adAccountIds } = await getCredentials('linkedin')
+  const accounts = [...new Set([accountId, ...adAccountIds].filter((a) => /^\d+$/.test(a ?? '')))]
+  for (const acct of accounts) {
+    try {
+      const d = await get(`/adAccounts/${acct}/adCampaigns/${campaignId}`, fetchImpl)
+      const name = typeof d?.name === 'string' && d.name.trim() ? d.name.trim() : null
+      if (name) {
+        campaignNames.set(campaignId, name)
+        return name
+      }
+    } catch {
+      /* not in this account, or no access — try the next */
+    }
   }
+  campaignMisses.set(campaignId, Date.now())
+  return null
 }
 
 /** For tests. */
