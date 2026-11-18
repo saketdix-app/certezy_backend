@@ -2,7 +2,8 @@
 
 import * as service from './auth.service.js'
 import { assertCanSetStatus } from '../team/team.service.js'
-import { softDeleteUser, restoreUser, RECOVERY_DAYS } from './userDeletion.js'
+import { softDeleteUser, restoreUser, eraseNow, RECOVERY_DAYS } from './userDeletion.js'
+import { audit } from '../../utils/audit.js'
 import { requestPasswordReset, checkResetToken, resetPassword } from './passwordReset.js'
 import { success } from '../../utils/response.js'
 
@@ -183,6 +184,17 @@ const restoreDeletedUser = async (req, res, next) => {
   }
 }
 
+// ── POST /auth/users/:id/erase — erase a deleted user now (no 30-day wait) ─
+const eraseDeletedUser = async (req, res, next) => {
+  try {
+    const data = await eraseNow(req.params.id, req.user, req.body?.confirm_email)
+    await audit(req, { action: 'user.erase', targetType: 'user', targetId: data.id, details: { role: data.role, email: data.email } })
+    return success(res, { message: `${data.name} erased permanently`, data: { id: data.id } })
+  } catch (err) {
+    next(err)
+  }
+}
+
 const updateUserStatus = async (req, res, next) => {
   try {
     await assertCanSetStatus(req.user, req.params.id, Boolean(req.body.is_active))
@@ -246,4 +258,5 @@ export {
   updateUserStatus,
   deleteUser,
   restoreDeletedUser,
+  eraseDeletedUser,
 }
