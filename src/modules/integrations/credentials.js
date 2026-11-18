@@ -223,7 +223,8 @@ export const setCredentialValues = async (source, values, actorId) => {
   const fields = FIELDS[source] ?? []
   const touched = Object.keys(values)
   if (!values.connection && touched.some((k) => ['page_access_token', 'access_token'].includes(k))) {
-    values = { ...values, connection: '', ...(source === 'linkedin' && { refresh_token: '' }), ...(source === 'meta' && { pages: '' }) }
+    // Values passed in win over the clean-up (e.g. a new Page list saved with its token)
+    values = { connection: '', ...(source === 'linkedin' && { refresh_token: '' }), ...(source === 'meta' && { pages: '' }), ...values }
   }
   const saved = []
   const cleared = []

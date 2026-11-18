@@ -149,13 +149,32 @@ const fetchAndMap = async (source, payload, config) => {
  * Process one recorded event. Throws on temporary failures so the queue
  * retries; permanent problems (no contact details) are stored as failed.
  */
+/** The form an event came from, known before fetching the lead itself. */
+const formOf = (source, payload) => {
+  if (source === 'meta') return payload.form_id ? String(payload.form_id) : null
+  if (source === 'linkedin') return linkedin.leadFormId(payload.response?.versionedLeadGenFormUrn ?? payload.response?.leadGenFormUrn)
+  return null
+}
+
 export const processEvent = async (eventId) => {
   const [[event]] = await pool.query('SELECT * FROM lead_ingest_events WHERE id = ?', [eventId])
   if (!event || ['created', 'duplicate'].includes(event.status)) return event?.status ?? 'missing'
   const integration = await getIntegration(event.source)
+  const payload = parseJson(event.payload) ?? {}
+  // Only the forms chosen in Admin → Integrations (none chosen = every form).
+  // Checked before the lead's details are fetched.
+  const chosen = integration.config?.selected_forms
+  const formId = formOf(event.source, payload)
+  if (Array.isArray(chosen) && formId && !chosen.map(String).includes(formId)) {
+    await finishEvent(event.id, 'skipped', { error: 'Form not selected in Admin → Integrations' })
+    return 'skipped'
+  }
   await pool.query("UPDATE lead_ingest_events SET attempts = attempts + 1, status = 'processing' WHERE id = ?", [event.id])
   try {
-    const mapped = await fetchAndMap(event.source, parseJson(event.payload) ?? {}, integration.config)
+    const mapped = await fetchAndMap(event.source, payload, integration.config)
+    // The form's name as well as its number
+    const formName = integration.config?.form_names?.[mapped.source_meta?.form]
+    if (formName) mapped.source_meta.form_name = formName
     const result = await ingestLead(event.source, mapped)
     await finishEvent(event.id, result.status, { leadId: result.lead_id })
     await markHealth(event.source, true)

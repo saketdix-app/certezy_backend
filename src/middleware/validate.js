@@ -427,6 +427,10 @@ const schemas = {
       // form id → course id, so each form's leads are interested in the right course
       form_courses: Joi.object().pattern(Joi.string().max(100), Joi.number().integer().positive()).optional(),
       default_course_id: Joi.number().integer().positive().allow(null).optional(),
+      // Only these forms are imported; null / missing = every form, including new ones
+      selected_forms: Joi.array().items(Joi.string().max(100)).max(2000).allow(null).optional(),
+      // form id → name, shown on each lead
+      form_names: Joi.object().pattern(Joi.string().max(100), Joi.string().max(300)).optional(),
     }).optional(),
   }),
   // Keys typed in Admin → Integrations: '' removes the portal value

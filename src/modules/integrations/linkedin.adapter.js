@@ -173,3 +173,40 @@ export const clearCampaignCache = () => {
   campaignNames.clear()
   campaignMisses.clear()
 }
+
+const LI_FORM_STATUS = { PUBLISHED: 'active', ARCHIVED: 'archived', DRAFT: 'draft' }
+
+/**
+ * Every lead form in every connected ad account (GET /leadForms?q=owner).
+ * → { forms: [{ id, name, status, owner_id, owner_name }], errors: [] }
+ */
+export const listForms = async ({ fetchImpl = fetch } = {}) => {
+  const { adAccountIds, connection } = await getCredentials('linkedin')
+  const accountName = Object.fromEntries((connection?.accounts ?? []).map((a) => [a.id, a.name]))
+  const forms = []
+  const errors = []
+  for (const acct of adAccountIds.filter((a) => /^\d+$/.test(a))) {
+    const owner = encodeURIComponent(`urn:li:sponsoredAccount:${acct}`)
+    try {
+      for (let page = 0; page < 10; page++) {
+        const data = await get(`/leadForms?q=owner&owner=(sponsoredAccount:${owner})&start=${page * PAGE}&count=${PAGE}`, fetchImpl)
+        const elements = data.elements ?? []
+        for (const f of elements) {
+          forms.push({
+            id: String(f.id),
+            name: f.name ?? `Form ${f.id}`,
+            status: LI_FORM_STATUS[f.state] ?? (f.state ? String(f.state).toLowerCase() : null),
+            leads_count: null,
+            created_at: f.created ? new Date(Number(f.created)).toISOString() : null,
+            owner_id: acct,
+            owner_name: accountName[acct] ?? `Ad account ${acct}`,
+          })
+        }
+        if (elements.length < PAGE) break
+      }
+    } catch (err) {
+      errors.push(`${accountName[acct] ?? `Ad account ${acct}`}: ${err.message}`)
+    }
+  }
+  return { forms, errors }
+}
