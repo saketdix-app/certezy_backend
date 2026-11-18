@@ -103,7 +103,25 @@ const groupMoney = (rows) => {
   return out
 }
 
-export const salesReport = async (actor, { from, to, owner_id } = {}) => {
+/** Revenue is for Super Admins only: everyone else gets counts, no amounts. */
+const withoutMoney = (r) => ({
+  ...r,
+  money_visible: false,
+  revenue: null,
+  gross: null,
+  by_course: r.by_course.map((x) => ({ ...x, amount: null })),
+  by_source: r.by_source.map((x) => ({ ...x, amount: null })),
+  by_consultant: r.by_consultant.map((x) => ({ ...x, amount: null })),
+  discount_links: { ...r.discount_links, revenue: null },
+  recent: r.recent.map((x) => ({ ...x, amount: null, original_amount: null })),
+})
+
+export const salesReport = async (actor, q = {}) => {
+  const report = await buildSalesReport(actor, q)
+  return actor?.role === 'super_admin' ? { ...report, money_visible: true } : withoutMoney(report)
+}
+
+const buildSalesReport = async (actor, { from, to, owner_id } = {}) => {
   if (!isManager(actor) && actor?.role !== 'consultant') throw fail(403, 'Sales reports are for consultants and admins')
   const owners = ownerScope(actor, owner_id)
   const start = from ? toSql(from) : toSql(Date.now() - 30 * 86400e3)

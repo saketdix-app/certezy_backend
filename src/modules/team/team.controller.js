@@ -1,6 +1,7 @@
 // src/modules/team/team.controller.js
 
 import * as service from './team.service.js'
+import { handoverFrom, handoverSummary } from '../crm/distribution.service.js'
 import { listAuditLogs } from '../../utils/audit.js'
 import { success } from '../../utils/response.js'
 
@@ -11,6 +12,31 @@ const handle = (fn) => async (req, res, next) => {
     next(err)
   }
 }
+
+// GET /admin/team/:id/handover — open leads and exams this person still has
+export const handoverInfo = handle(async (req, res) => success(res, { data: await handoverSummary(req.user, req.params.id) }))
+
+// POST /admin/team/:id/handover — move them (before blocking, deleting or a role change)
+export const handover = handle(async (req, res) => {
+  const result = await handoverFrom(req, req.params.id, req.body)
+  return success(res, { message: 'Leads handed over', data: { ...result, summary: await handoverSummary(req.user, req.params.id) } })
+})
+
+// DELETE /admin/team/:id  { confirm_email, handover? } — hand over first if anything is still open
+export const remove = handle(async (req, res) => {
+  const target = await service.assertCanDelete(req, req.params.id, req.body.confirm_email)
+  if (req.body.handover) await handoverFrom(req, target.id, req.body.handover)
+  const left = await handoverSummary(req.user, target.id)
+  if (left.open_leads || left.open_exams) {
+    const err = new Error(
+      `Hand over their ${left.open_leads} open lead(s) and ${left.open_exams} open exam(s) before deleting this account`
+    )
+    err.statusCode = 409
+    err.details = left
+    throw err
+  }
+  return success(res, { message: 'Team member deleted', data: await service.deleteMember(req, target) })
+})
 
 // GET /admin/team?role&status&search
 export const list = handle(async (req, res) => {

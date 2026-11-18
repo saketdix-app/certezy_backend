@@ -399,11 +399,13 @@ const schemas = {
     note: Joi.string().trim().max(500).allow('', null).optional(),
   }),
   moveLeads: Joi.object({
-    lead_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).required(),
-    owner_id: Joi.number().integer().positive().required(),
+    lead_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(2000).required(),
+    // one owner, or several to split the leads evenly between
+    owner_id: Joi.number().integer().positive(),
+    owner_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).unique(),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     mode: Joi.string().valid('assign', 'rebalance').optional(),
-  }),
+  }).xor('owner_id', 'owner_ids'),
   distributionPool: Joi.object({
     name: Joi.string().trim().min(2).max(100).optional(),
     enabled: Joi.boolean().optional(),
@@ -518,11 +520,23 @@ const schemas = {
   consultantAllocation: Joi.object({
     accepting_leads: Joi.boolean().required(),
     paused_reason: Joi.string().trim().max(255).allow('', null).optional(),
+    on_leave_from: Joi.date().iso().allow(null).optional(),
     on_leave_until: Joi.date().iso().allow(null).optional(),
     daily_limit: Joi.number().integer().min(0).max(10000).allow(null).optional(),
     open_limit: Joi.number().integer().min(0).max(100000).allow(null).optional(),
   }),
   reauth: Joi.object({ password: reauthPassword }),
+  // What happens to someone's leads when they leave, are blocked or change role
+  teamHandover: Joi.object({
+    owner_mode: Joi.string().valid('owner', 'round_robin', 'unassigned', 'keep').default('keep'),
+    owner_id: Joi.number().integer().positive().when('owner_mode', { is: 'owner', then: Joi.required(), otherwise: Joi.forbidden() }),
+    coordinator_mode: Joi.string().valid('coordinator', 'unassigned', 'keep').default('keep'),
+    coordinator_id: Joi.number().integer().positive().when('coordinator_mode', { is: 'coordinator', then: Joi.required(), otherwise: Joi.forbidden() }),
+  }),
+  teamDelete: Joi.object({
+    confirm_email: Joi.string().trim().lowercase().email().required(),
+    handover: Joi.object().unknown(true).optional(),
+  }),
   createSubAdmin: createSubAdminSchema,
   assignCourses: Joi.object({
     user_id: Joi.number().integer().positive().required(),

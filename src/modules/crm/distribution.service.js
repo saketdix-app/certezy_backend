@@ -175,14 +175,17 @@ export const deletePool = async (req, id) => {
 /** Why a consultant can't take a lead now, or null if they can. */
 export const ineligibleReason = async (userId, db = pool) => {
   const [[u]] = await db.query(
-    `SELECT u.role, u.is_active, u.deleted_at, cs.accepting_leads, cs.on_leave_until, cs.daily_limit, cs.open_limit
+    `SELECT u.role, u.is_active, u.deleted_at, cs.accepting_leads, cs.on_leave_from, cs.on_leave_until, cs.daily_limit, cs.open_limit
      FROM users u LEFT JOIN consultant_settings cs ON cs.user_id = u.id WHERE u.id = ?`,
     [userId]
   )
   if (!u || u.role !== 'consultant' || !u.is_active || u.deleted_at) return 'inactive'
   if (u.accepting_leads === 0) return 'paused'
   const { start } = todayBounds()
-  if (u.on_leave_until && String(u.on_leave_until).slice(0, 10) >= start.slice(0, 10)) return 'on_leave'
+  // On leave from (or now) until the end date — planned leave starts on its first day
+  const today = start.slice(0, 10)
+  const day = (d) => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10)
+  if (u.on_leave_until && day(u.on_leave_until) >= today && (!u.on_leave_from || day(u.on_leave_from) <= today)) return 'on_leave'
   if (u.daily_limit != null) {
     const [[{ n }]] = await db.query('SELECT COUNT(*) AS n FROM leads WHERE owner_id = ? AND assigned_at >= ?', [userId, start])
     if (n >= u.daily_limit) return 'daily_limit'
@@ -350,15 +353,33 @@ export const previewMove = async (actor, { lead_ids, owner_id }) => {
  * a reason. Pending follow-ups move with the lead; history is kept; the
  * Round Robin cursor is not touched.
  */
-export const moveLeads = async (req, { lead_ids, owner_id, reason, mode }) => {
+export const moveLeads = async (req, { lead_ids, owner_id, owner_ids, reason, mode }) => {
   assertManager(req.user)
-  const owner = await assertOwner(owner_id)
+  const ids = owner_ids?.length ? owner_ids : [owner_id]
+  const owners = []
+  for (const id of ids) owners.push(await assertOwner(id))
   const leads = await loadLeadsForMove(lead_ids)
-  const transfers = leads.filter((l) => l.owner_id && l.owner_id !== owner.id)
   const why = String(reason ?? '').trim()
-  if (transfers.length && !why) throw fail(400, 'Give a reason for transferring leads to another consultant')
+  const willTransfer = leads.some((l) => l.owner_id && !ids.includes(l.owner_id))
+  if (willTransfer && !why) throw fail(400, 'Give a reason for transferring leads to another consultant')
 
-  const how = mode === 'rebalance' ? 'rebalance' : null
+  // Several owners: deal the leads out in turn (1st → A, 2nd → B, …) so everyone gets an even share
+  const shares = owners.map(() => [])
+  leads.forEach((l, i) => shares[i % owners.length].push(l))
+  let moved = 0
+  const per_owner = []
+  for (let i = 0; i < owners.length; i++) {
+    const n = await moveTo(req, owners[i], shares[i], why, mode)
+    moved += n
+    per_owner.push({ id: owners[i].id, name: owners[i].name, moved: n })
+  }
+  return { moved, unchanged: leads.length - moved, per_owner }
+}
+
+/** Move these leads to one owner: history, follow-ups and notifications. */
+const moveTo = async (req, owner, leads, why, mode) => {
+  const transfers = leads.filter((l) => l.owner_id && l.owner_id !== owner.id)
+  const how = mode === 'rebalance' ? 'rebalance' : mode === 'handover' ? 'handover' : null
   let moved = 0
   for (const l of leads) {
     if (l.owner_id === owner.id) continue
@@ -401,7 +422,124 @@ export const moveLeads = async (req, { lead_ids, owner_id, reason, mode }) => {
       })
     }
   }
-  return { moved, unchanged: leads.length - moved }
+  return moved
+}
+
+// ── Handover: someone leaves, is blocked or changes role ────────────────
+
+const OPEN_FOR_HANDOVER = "l.stage NOT IN ('course_done', 'not_interested', 'junk')"
+
+/** What this person still has: open leads they own, exams they coordinate. */
+export const handoverSummary = async (actor, userId) => {
+  assertManager(actor)
+  const [[u]] = await pool.query('SELECT id, name, role, is_active FROM users WHERE id = ? AND deleted_at IS NULL', [userId])
+  if (!u) throw fail(404, 'Team member not found')
+  const [[c]] = await pool.query(
+    `SELECT
+       (SELECT COUNT(*) FROM leads l WHERE l.owner_id = ? AND l.archived_at IS NULL AND ${OPEN_FOR_HANDOVER}) AS open_leads,
+       (SELECT COUNT(*) FROM leads l WHERE l.owner_id = ? AND l.archived_at IS NULL) AS all_leads,
+       (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.exam_status <> 'completed') AS open_exams`,
+    [u.id, u.id, u.id]
+  )
+  return {
+    user: { id: u.id, name: u.name, role: u.role, is_active: Boolean(u.is_active) },
+    open_leads: Number(c.open_leads),
+    closed_leads: Number(c.all_leads) - Number(c.open_leads),
+    open_exams: Number(c.open_exams),
+    round_robin_enabled: await isRoundRobinOn(),
+  }
+}
+
+/**
+ * Hand someone's open leads to another owner (or Round Robin, or the
+ * unassigned queue) and their open exams to another coordinator (or none).
+ * Closed leads keep their owner for history.
+ */
+export const handoverFrom = async (req, userId, { owner_mode = 'keep', owner_id, coordinator_mode = 'keep', coordinator_id } = {}) => {
+  assertManager(req.user)
+  if (!['keep', 'owner', 'round_robin', 'unassigned'].includes(owner_mode)) throw fail(400, 'Choose what happens to their leads')
+  if (!['keep', 'coordinator', 'unassigned'].includes(coordinator_mode)) throw fail(400, 'Choose what happens to their exams')
+  const [[from]] = await pool.query('SELECT id, name FROM users WHERE id = ?', [userId])
+  if (!from) throw fail(404, 'Team member not found')
+  const why = `Handover from ${from.name}`
+  const result = { leads_moved: 0, leads_unassigned: 0, leads_round_robin: 0, leads_waiting: 0, exams_moved: 0 }
+
+  if (owner_mode !== 'keep') {
+    if (owner_mode === 'owner' && Number(owner_id) === Number(from.id)) throw fail(400, 'Choose someone else to take the leads')
+    const owner = owner_mode === 'owner' ? await assertOwner(owner_id) : null
+    const [rows] = await pool.query(
+      `SELECT l.id, l.name, l.stage, l.owner_id FROM leads l
+       WHERE l.owner_id = ? AND l.archived_at IS NULL AND ${OPEN_FOR_HANDOVER} ORDER BY l.id`,
+      [from.id]
+    )
+    if (owner) {
+      result.leads_moved = await moveTo(req, owner, rows, why, 'handover')
+    } else {
+      for (const l of rows) {
+        await pool.query('UPDATE leads SET owner_id = NULL, assigned_by = ?, assigned_at = NULL WHERE id = ?', [req.user.id, l.id])
+        await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
+          l.id,
+          req.user.id,
+          'assignment',
+          why,
+          JSON.stringify({ how: 'handover', from: from.id, to: null }),
+        ])
+        if (owner_mode === 'round_robin') {
+          const r = await autoAssign(l.id, { req })
+          if (r.assigned_to) result.leads_round_robin++
+          else result.leads_waiting++
+        } else {
+          result.leads_unassigned++
+        }
+      }
+      if (rows.length) {
+        await audit(req, { action: 'lead.handover', targetType: 'user', targetId: from.id, details: { mode: owner_mode, leads: rows.length } })
+      }
+    }
+  }
+
+  if (coordinator_mode !== 'keep') {
+    let to = null
+    if (coordinator_mode === 'coordinator') {
+      const [[c]] = await pool.query(
+        "SELECT id, name FROM users WHERE id = ? AND role = 'exam_coordinator' AND is_active = 1 AND deleted_at IS NULL",
+        [coordinator_id]
+      )
+      if (!c || c.id === from.id) throw fail(400, 'Choose another active exam coordinator')
+      to = c.id
+    }
+    const [rows] = await pool.query(
+      `SELECT l.id, l.name FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.exam_status <> 'completed'`,
+      [from.id]
+    )
+    for (const l of rows) {
+      await pool.query('UPDATE leads SET exam_coordinator_id = ?, exam_coordinator_assigned_at = ? WHERE id = ?', [
+        to,
+        to ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+        l.id,
+      ])
+      await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
+        l.id,
+        req.user.id,
+        'exam_coordinator',
+        why,
+        JSON.stringify({ from: from.id, to }),
+      ])
+    }
+    result.exams_moved = rows.length
+    if (rows.length && to) {
+      await notify(to, {
+        type: 'exam_assigned',
+        title: rows.length === 1 ? 'A student was handed to you for the exam' : `${rows.length} students were handed to you for the exam`,
+        body: why,
+        link: '/consultant/leads',
+      })
+    }
+    if (rows.length) {
+      await audit(req, { action: 'lead.exam_handover', targetType: 'user', targetId: from.id, details: { to, leads: rows.length } })
+    }
+  }
+  return result
 }
 
 // ── Reports (PRD §6.3 distribution reports, §9.1) ────────────────────────
