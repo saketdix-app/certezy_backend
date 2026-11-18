@@ -492,15 +492,15 @@ export const assertCanDelete = async (req, id, confirmEmail) => {
 }
 
 /**
- * Remove a team member: they can't sign in again, disappear from the team,
- * pickers and Round Robin, and their email is freed for a new account.
- * Their name stays on past activity, payments and reports.
+ * Remove a team member, the same way as Users → Delete: they can't sign in,
+ * and disappear from the team, pickers and Round Robin. They can be restored
+ * from Users → Deleted for 30 days (or erased there straight away); after
+ * that their personal details are erased automatically.
  */
 export const deleteMember = async (req, target) => {
   await pool.query(
-    // The address is freed (kept in the audit log) so it can be invited again
-    `UPDATE users SET deleted_at = UTC_TIMESTAMP(), is_active = 0, email = CONCAT('deleted-', id, '@removed.invalid') WHERE id = ?`,
-    [target.id]
+    `UPDATE users SET deleted_at = UTC_TIMESTAMP(), deleted_by = ?, was_active = is_active, is_active = 0 WHERE id = ?`,
+    [req.user.id, target.id]
   )
   await pool.query('DELETE FROM refresh_tokens WHERE user_id = ?', [target.id])
   await pool.query('DELETE FROM distribution_pool_members WHERE user_id = ?', [target.id]).catch(() => {})

@@ -3,7 +3,7 @@
 //   1. delete  → users.deleted_at is set, the account is switched off and signed
 //                out everywhere. Nothing else changes, so it can be restored.
 //   2. restore → within RECOVERY_DAYS, everything comes back as it was.
-//   3. purge   → after RECOVERY_DAYS the user's data is erased: courses,
+//   3. purge   → after RECOVERY_DAYS (or straight away with "Erase now") the user's data is erased: courses,
 //                progress, test attempts, certificates, reviews, discount links,
 //                sign-in links and messages. The account row is kept only as an
 //                anonymous "Deleted user" so payment and invoice records (which
@@ -109,6 +109,27 @@ const eraseUser = async (id) => {
   } finally {
     conn.release()
   }
+}
+
+// ── Erase now: skip the rest of the recovery period ──────────────────────
+/**
+ * Permanently erase a deleted user before the 30 days are up. Only for users
+ * already in the Deleted list; the admin types the user's email to confirm.
+ * Admin and Super Admin accounts can only be erased by a Super Admin.
+ */
+export const eraseNow = async (id, actor, confirmEmail) => {
+  const user = await getUser(id)
+  if (!user || user.purged_at) throw fail(404, 'User not found — it may have been erased already')
+  if (!user.deleted_at) throw fail(409, 'Delete this user first; erasing is only for deleted users')
+  if (Number(id) === Number(actor.id)) throw fail(400, "You can't erase your own account")
+  if (['admin', 'super_admin'].includes(user.role) && actor.role !== 'super_admin') {
+    throw fail(403, 'Only a Super Admin can erase an Admin account')
+  }
+  if (String(confirmEmail ?? '').trim().toLowerCase() !== String(user.email).toLowerCase()) {
+    throw fail(400, 'Type their email address exactly to confirm')
+  }
+  await eraseUser(user.id)
+  return { id: user.id, name: user.name, email: user.email, role: user.role }
 }
 
 export const purgeExpiredUsers = async () => {
