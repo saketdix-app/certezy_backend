@@ -27,6 +27,7 @@ export const ROLE_LABELS = {
   admin: 'Admin',
   sub_admin: 'Sub-Admin',
   consultant: 'Consultant',
+  exam_coordinator: 'Exam Coordinator',
   student: 'Student',
 }
 
@@ -68,7 +69,7 @@ export const canAssignRole = async (actor, role) => {
   if (!actor?.is_active) return false
   if (actor.role === SUPER) return STAFF_ROLES.includes(role) || role === 'student'
   if (actor.role === 'admin') {
-    if (role === 'sub_admin' || role === 'consultant') return true
+    if (['sub_admin', 'consultant', 'exam_coordinator'].includes(role)) return true
     // A disabled admin never gets here (is_active checked above)
     if (role === SUPER) return Boolean(await activeGrant(actor.id, PRIVILEGES.CREATE_SUPER_ADMIN))
   }
@@ -78,7 +79,7 @@ export const canAssignRole = async (actor, role) => {
 /** May `actor` change the role or status of `target` (as they are now)? */
 const canManage = (actor, target) => {
   if (actor.role === SUPER) return true
-  if (actor.role === 'admin') return ['sub_admin', 'consultant', 'student'].includes(target.role)
+  if (actor.role === 'admin') return ['sub_admin', 'consultant', 'exam_coordinator', 'student'].includes(target.role)
   return false
 }
 

@@ -1,5 +1,6 @@
 // src/modules/crm/crm.routes.js
-// 2.0 Phase 3 — lead CRM for Consultants (own leads) and Admins (all leads).
+// 2.0 Phase 3 — lead CRM for Consultants (own leads), Exam Coordinators
+// (leads assigned to them for the exam) and Admins (all leads).
 // leads.service applies record-level access on every call.
 
 import { Router } from 'express'
@@ -9,21 +10,29 @@ import role from '../../middleware/role.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
-const crm = [authenticate, role('admin', 'consultant')] // Super Admins pass as Admins
+// Sales side (Super Admins pass as Admins)
+const crm = [authenticate, role('admin', 'consultant')]
+// Also Exam Coordinators: their leads, notes, WhatsApp, the exam and Course Done
+const crmAll = [authenticate, role('admin', 'consultant', 'exam_coordinator')]
 
-router.get('/dashboard', ...crm, controller.dashboard)
-router.get('/follow-ups', ...crm, controller.followUps)
+router.get('/dashboard', ...crmAll, controller.dashboard)
+router.get('/follow-ups', ...crmAll, controller.followUps)
 router.patch('/follow-ups/:id', ...crm, validate(schemas.completeFollowUp), controller.completeFollowUp)
 router.get('/owners', ...crm, controller.owners)
-router.get('/leads', ...crm, controller.list)
+router.get('/leads', ...crmAll, controller.list)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)
 router.post('/leads/assign', ...crm, validate(schemas.moveLeads), controller.move)
-router.get('/leads/:id', ...crm, controller.get)
+router.get('/leads/:id', ...crmAll, controller.get)
 router.patch('/leads/:id', ...crm, validate(schemas.updateLead), controller.update)
-router.post('/leads/:id/stage', ...crm, validate(schemas.changeLeadStage), controller.changeStage)
-router.post('/leads/:id/activities', ...crm, validate(schemas.leadActivity), controller.logActivity)
+router.post('/leads/:id/stage', ...crmAll, validate(schemas.changeLeadStage), controller.changeStage)
+router.post('/leads/:id/activities', ...crmAll, validate(schemas.leadActivity), controller.logActivity)
 router.post('/leads/:id/follow-ups', ...crm, validate(schemas.scheduleFollowUp), controller.scheduleFollowUp)
+
+// Exam: coordinator picker and assignment (consultant / Admin), exam updates (anyone with access)
+router.get('/exam-coordinators', ...crm, controller.examCoordinators)
+router.put('/leads/:id/exam-coordinator', ...crm, validate(schemas.leadExamCoordinator), controller.setExamCoordinator)
+router.put('/leads/:id/exam', ...crmAll, validate(schemas.leadExam), controller.updateExam)
 
 // CRM → LMS actions from a lead (permission + ownership checked in the service)
 router.post('/leads/:id/student-account', ...crm, controller.studentAccount)
@@ -39,9 +48,9 @@ router.get('/settings', ...crm, controller.settings)
 router.put('/settings', ...crm, validate(schemas.crmSettings), controller.saveSettings)
 
 // WhatsApp conversation on a lead, and automations (phase 8)
-router.get('/leads/:id/whatsapp', ...crm, controller.whatsappThread)
-router.post('/leads/:id/whatsapp', ...crm, validate(schemas.whatsappSend), controller.whatsappSend)
-router.get('/whatsapp/templates', ...crm, controller.whatsappTemplates)
+router.get('/leads/:id/whatsapp', ...crmAll, controller.whatsappThread)
+router.post('/leads/:id/whatsapp', ...crmAll, validate(schemas.whatsappSend), controller.whatsappSend)
+router.get('/whatsapp/templates', ...crmAll, controller.whatsappTemplates)
 router.get('/automations', ...crm, controller.automationsGet)
 router.put('/automations', ...crm, validate(schemas.automations), controller.automationsSave)
 

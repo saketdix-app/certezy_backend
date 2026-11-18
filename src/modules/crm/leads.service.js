@@ -2,7 +2,11 @@
 // 2.0 Phase 3 — lead records, pipeline, activity timeline and follow-ups
 // (PRD §4–§5). Access is enforced here, not in the UI:
 //   • Consultants see and work only leads they own.
+//   • Exam Coordinators see the leads assigned to them for the exam: they log
+//     notes, update the exam and, once it is completed, mark Course Done.
+//     The lead stays owned by its consultant.
 //   • Admins and Super Admins see all leads.
+//   • Moving to Application records the ticket size (INR or USD).
 //   • Closed leads (Not Interested / Junk) reopen only with a reason, by an Admin.
 //   • "Course Done" is set by the team whenever they decide (no account, course
 //     or progress check). The auto_course_done automation still moves a lead
@@ -10,21 +14,28 @@
 //     progress are tracked separately; certificates still need completion.
 
 import { pool } from '../../config/db.js'
+import { managerIds, notify } from '../../utils/notify.js'
 import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { getCompletionStatus } from '../certificates/certificates.service.js'
 import { autoAssign } from './distribution.service.js'
 import {
   CLOSED_STAGES,
+  EXAM_STATUSES,
   REASON_REQUIRED,
   STAGE_LABELS,
   STAGES,
+  TICKET_CURRENCIES,
   TRANSITIONS,
 } from './crm.constants.js'
 
 const fail = (statusCode, message, extra) => Object.assign(new Error(message), { statusCode }, extra)
 const MANAGERS = ['super_admin', 'admin']
 const isManager = (actor) => MANAGERS.includes(actor?.role)
+const COORDINATOR = 'exam_coordinator'
+const isCoordinator = (actor) => actor?.role === COORDINATOR
+/** Owner or Admin: may edit the lead, move it through the pipeline, assign a coordinator. */
+const canManageLead = (actor, lead) => isManager(actor) || (lead.owner_id != null && lead.owner_id === actor?.id)
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -39,6 +50,7 @@ export const normalizeEmail = (email) => {
 }
 
 const toSqlDate = (value) => new Date(value).toISOString().slice(0, 19).replace('T', ' ')
+const sqlToIso = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toISOString()
 
 /** Start and end (UTC) of "today" in the business timezone. */
 export const todayBounds = (tz = env.timezone, now = new Date()) => {
@@ -55,12 +67,28 @@ export const todayBounds = (tz = env.timezone, now = new Date()) => {
 }
 
 const assertCrmUser = (actor) => {
-  if (!isManager(actor) && actor?.role !== 'consultant') throw fail(403, 'The CRM is for consultants and admins')
+  if (!isManager(actor) && actor?.role !== 'consultant' && !isCoordinator(actor)) {
+    throw fail(403, 'The CRM is for consultants, exam coordinators and admins')
+  }
+}
+/** Sales-side work (create, edit, follow-ups) — not for Exam Coordinators. */
+const assertSalesUser = (actor) => {
+  assertCrmUser(actor)
+  if (isCoordinator(actor)) throw fail(403, "Exam coordinators can't do this — ask the lead's consultant")
 }
 
 /** WHERE fragment limiting leads to what the actor may see. */
-const scopeFor = (actor, alias = 'l') =>
-  isManager(actor) ? { sql: '1 = 1', values: [] } : { sql: `${alias}.owner_id = ?`, values: [actor.id] }
+export const scopeFor = (actor, alias = 'l') =>
+  isManager(actor)
+    ? { sql: '1 = 1', values: [] }
+    : isCoordinator(actor)
+      ? { sql: `${alias}.exam_coordinator_id = ?`, values: [actor.id] }
+      : { sql: `${alias}.owner_id = ?`, values: [actor.id] }
+
+/** May this actor see this lead? */
+const canSeeLead = (actor, lead) =>
+  isManager(actor) ||
+  (isCoordinator(actor) ? lead.exam_coordinator_id === actor.id : lead.owner_id === actor.id)
 
 const addActivity = (leadId, actorId, type, body = null, meta = null) =>
   pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
@@ -80,7 +108,7 @@ const getLeadRow = async (id) => {
 const loadVisibleLead = async (actor, id) => {
   assertCrmUser(actor)
   const lead = await getLeadRow(id)
-  if (!lead || (!isManager(actor) && lead.owner_id !== actor.id)) throw fail(404, 'Lead not found')
+  if (!lead || !canSeeLead(actor, lead)) throw fail(404, 'Lead not found')
   return lead
 }
 
@@ -135,7 +163,7 @@ const assertValidOwner = async (ownerId) => {
 
 export const createLead = async (req, body) => {
   const actor = req.user
-  assertCrmUser(actor)
+  assertSalesUser(actor)
   if (!body.phone && !body.email) throw fail(400, 'Add a phone number or an email')
 
   const duplicates = await findDuplicates(body)
@@ -143,10 +171,9 @@ export const createLead = async (req, body) => {
     // Never silently create a second record for the same person (PRD §5)
     throw fail(409, 'This person may already be a lead', {
       details: {
+        // Another consultant's lead: say it exists, nothing about it
         duplicates: duplicates.map((d) =>
-          isManager(actor) || d.owner_id === actor.id
-            ? d
-            : { id: null, name: d.name, stage: d.stage, owner_name: d.owner_name } // other consultant's lead: no access
+          isManager(actor) || d.owner_id === actor.id ? d : { id: null, other_owner: true }
         ),
       },
     })
@@ -190,25 +217,43 @@ export const createLead = async (req, body) => {
   return getLead(actor, id)
 }
 
+const cleanTicket = (size, currency) => {
+  const amount = size == null || size === '' ? null : Math.round(Number(size) * 100) / 100
+  if (amount != null && !(amount > 0)) throw fail(400, 'Enter a ticket size above 0')
+  if (amount != null && !TICKET_CURRENCIES.includes(currency)) throw fail(400, 'Choose INR or USD for the ticket size')
+  return { ticket_size: amount, ticket_currency: amount == null ? null : currency }
+}
+
 export const updateLead = async (req, id, body) => {
   const actor = req.user
+  assertSalesUser(actor)
   const lead = await loadVisibleLead(actor, id)
+  const ticket =
+    body.ticket_size !== undefined || body.ticket_currency !== undefined
+      ? cleanTicket(
+          body.ticket_size !== undefined ? body.ticket_size : lead.ticket_size,
+          body.ticket_currency ?? lead.ticket_currency
+        )
+      : { ticket_size: lead.ticket_size, ticket_currency: lead.ticket_currency }
   const next = {
     name: body.name ?? lead.name,
     phone: body.phone !== undefined ? body.phone || null : lead.phone,
     email: body.email !== undefined ? body.email || null : lead.email,
     course_id: body.course_id !== undefined ? body.course_id || null : lead.course_id,
     preferred_schedule: body.preferred_schedule !== undefined ? body.preferred_schedule || null : lead.preferred_schedule,
+    ...ticket,
   }
   if (!next.phone && !next.email) throw fail(400, 'Keep a phone number or an email')
   const dup = await findDuplicates({ phone: next.phone, email: next.email }, lead.id)
   if (dup.length) throw fail(409, 'Another lead already has this phone or email', { details: { duplicates: dup.map((d) => ({ name: d.name, stage: d.stage })) } })
 
-  const changed = Object.keys(next).filter((k) => String(next[k] ?? '') !== String(lead[k] ?? ''))
+  const same = (k) =>
+    k === 'ticket_size' ? Number(next[k] ?? 0) === Number(lead[k] ?? 0) : String(next[k] ?? '') === String(lead[k] ?? '')
+  const changed = Object.keys(next).filter((k) => !same(k))
   if (!changed.length) return getLead(actor, lead.id)
   await pool.query(
     `UPDATE leads SET name = ?, phone = ?, phone_norm = ?, email = ?, email_norm = ?, course_id = ?,
-       preferred_schedule = ?, user_id = COALESCE(user_id, ?) WHERE id = ?`,
+       preferred_schedule = ?, ticket_size = ?, ticket_currency = ?, user_id = COALESCE(user_id, ?) WHERE id = ?`,
     [
       next.name,
       next.phone,
@@ -217,6 +262,8 @@ export const updateLead = async (req, id, body) => {
       normalizeEmail(next.email),
       next.course_id,
       next.preferred_schedule,
+      next.ticket_size,
+      next.ticket_currency,
       await findStudentId(next.email),
       lead.id,
     ]
@@ -250,32 +297,55 @@ const studentProgress = async (lead) => {
   }
 }
 
-/** Stages this actor may move the lead to now. */
-const allowedNextStages = (actor, lead) =>
-  (TRANSITIONS[lead.stage] ?? []).filter((s) => !CLOSED_STAGES.includes(lead.stage) || isManager(actor))
+/** Once the exam is completed, Course Done is open from any open stage. */
+const examDone = (lead) => lead.exam_status === 'completed'
+const canMarkCourseDone = (lead) =>
+  examDone(lead) && lead.stage !== 'course_done' && !CLOSED_STAGES.includes(lead.stage)
 
-export const changeStage = async (req, id, { stage, reason }) => {
+/** Stages this actor may move the lead to now. */
+const allowedNextStages = (actor, lead) => {
+  if (isCoordinator(actor)) return canMarkCourseDone(lead) ? ['course_done'] : []
+  if (!canManageLead(actor, lead)) return []
+  const next = (TRANSITIONS[lead.stage] ?? []).filter((s) => !CLOSED_STAGES.includes(lead.stage) || isManager(actor))
+  if (canMarkCourseDone(lead) && !next.includes('course_done')) next.push('course_done')
+  return next
+}
+
+export const changeStage = async (req, id, { stage, reason, ticket_size, ticket_currency }) => {
   const actor = req.user
   const lead = await loadVisibleLead(actor, id)
   if (!STAGES.includes(stage)) throw fail(400, 'Unknown stage')
   if (stage === lead.stage) throw fail(409, `This lead is already in ${STAGE_LABELS[stage]}`)
+  // Exam Coordinators: only Course Done, and only after the exam is completed
+  if (isCoordinator(actor) && !(stage === 'course_done' && canMarkCourseDone(lead))) {
+    throw fail(403, 'Exam coordinators can mark Course Done once the exam is completed')
+  }
+  if (!isCoordinator(actor) && !canManageLead(actor, lead)) throw fail(403, "You can't change this lead's status")
+  const examRoute = stage === 'course_done' && canMarkCourseDone(lead)
 
   const reopening = CLOSED_STAGES.includes(lead.stage)
   if (reopening && !isManager(actor)) {
     await audit(req, { action: 'lead.reopen', targetType: 'lead', targetId: lead.id, result: 'denied', details: { from: lead.stage, to: stage } })
     throw fail(403, 'Only an Admin can reopen a closed lead')
   }
-  if (!(TRANSITIONS[lead.stage] ?? []).includes(stage)) {
+  if (!examRoute && !(TRANSITIONS[lead.stage] ?? []).includes(stage)) {
     throw fail(400, `A lead in ${STAGE_LABELS[lead.stage]} can't move to ${STAGE_LABELS[stage]}`)
   }
   const why = String(reason ?? '').trim()
   if ((REASON_REQUIRED.includes(stage) || reopening) && !why) {
     throw fail(400, reopening ? 'Give a reason for reopening this lead' : `Give a reason for ${STAGE_LABELS[stage]}`)
   }
+  // Application records the expected deal value
+  let ticket = null
+  if (stage === 'application') {
+    if (ticket_size == null || ticket_size === '') throw fail(400, 'Enter the ticket size to move this lead to Application')
+    ticket = cleanTicket(ticket_size, ticket_currency)
+  }
 
   await pool.query(
     `UPDATE leads SET stage = ?, prior_stage = ?, stage_reason = ?, stage_changed_at = UTC_TIMESTAMP(),
-       disposition_reason = ?, first_contact_at = COALESCE(first_contact_at, ?)
+       disposition_reason = ?, first_contact_at = COALESCE(first_contact_at, ?),
+       ticket_size = COALESCE(?, ticket_size), ticket_currency = COALESCE(?, ticket_currency)
      WHERE id = ?`,
     [
       stage,
@@ -283,15 +353,31 @@ export const changeStage = async (req, id, { stage, reason }) => {
       why || null,
       CLOSED_STAGES.includes(stage) ? why : null,
       lead.stage === 'new' && !CLOSED_STAGES.includes(stage) ? toSqlDate(new Date()) : null,
+      ticket?.ticket_size ?? null,
+      ticket?.ticket_currency ?? null,
       lead.id,
     ]
   )
-  await addActivity(lead.id, actor.id, 'status_change', why || null, { from: lead.stage, to: stage })
+  await addActivity(lead.id, actor.id, 'status_change', why || null, {
+    from: lead.stage,
+    to: stage,
+    ...(ticket && { ticket_size: ticket.ticket_size, ticket_currency: ticket.ticket_currency }),
+  })
+  // The other side of the lead hears about Course Done
+  if (stage === 'course_done') {
+    const others = [lead.owner_id, lead.exam_coordinator_id].filter((u) => u && u !== actor.id)
+    await notify(others, {
+      type: 'course_done',
+      title: `${lead.name}: Course Done`,
+      body: `Marked by ${actor.name ?? 'a team member'}`,
+      link: `/consultant/leads?lead=${lead.id}`,
+    })
+  }
   await audit(req, {
     action: reopening ? 'lead.reopen' : 'lead.stage_change',
     targetType: 'lead',
     targetId: lead.id,
-    details: { from: lead.stage, to: stage, reason: why || undefined },
+    details: { from: lead.stage, to: stage, reason: why || undefined, ...(ticket ?? {}) },
   })
   return getLead(actor, lead.id)
 }
@@ -320,6 +406,7 @@ const refreshNextFollowUp = (leadId) =>
 
 export const scheduleFollowUp = async (req, id, { due_at, type, note }) => {
   const actor = req.user
+  assertSalesUser(actor)
   const lead = await loadVisibleLead(actor, id)
   if (CLOSED_STAGES.includes(lead.stage)) throw fail(400, 'Reopen this lead before scheduling a follow-up')
   const [r] = await pool.query(
@@ -337,7 +424,7 @@ export const scheduleFollowUp = async (req, id, { due_at, type, note }) => {
 
 export const completeFollowUp = async (req, followUpId, { status, outcome }) => {
   const actor = req.user
-  assertCrmUser(actor)
+  assertSalesUser(actor)
   const [[fu]] = await pool.query('SELECT * FROM lead_follow_ups WHERE id = ? LIMIT 1', [followUpId])
   if (!fu) throw fail(404, 'Follow-up not found')
   const lead = await loadVisibleLead(actor, fu.lead_id)
@@ -393,12 +480,14 @@ export const getLead = async (actor, id) => {
   const lead = await loadVisibleLead(actor, id)
   const [[extra]] = await pool.query(
     `SELECT c.title AS course_title, c.slug AS course_slug, o.name AS owner_name, o.email AS owner_email,
-            ab.name AS assigned_by_name, s.name AS student_name, s.email AS student_email
+            ab.name AS assigned_by_name, s.name AS student_name, s.email AS student_email,
+            ec.name AS exam_coordinator_name
      FROM leads l
      LEFT JOIN courses c ON c.id = l.course_id
      LEFT JOIN users o ON o.id = l.owner_id
      LEFT JOIN users ab ON ab.id = l.assigned_by
      LEFT JOIN users s ON s.id = l.user_id
+     LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
      WHERE l.id = ?`,
     [lead.id]
   )
@@ -420,6 +509,16 @@ export const getLead = async (actor, id) => {
     consent: parseJson(lead.consent),
     ...(await studentProgress(lead)),
     allowed_next_stages: allowedNextStages(actor, lead),
+    ticket_size: lead.ticket_size == null ? null : Number(lead.ticket_size),
+    // What this person may do here (the API enforces the same rules)
+    access: {
+      edit: canManageLead(actor, lead),
+      assign_exam_coordinator: canManageLead(actor, lead),
+      update_exam: true,
+      follow_ups: !isCoordinator(actor),
+      student_actions: !isCoordinator(actor),
+      course_done: canMarkCourseDone(lead) && (isCoordinator(actor) || canManageLead(actor, lead)),
+    },
     activities: activities.map((a) => ({ ...a, meta: parseJson(a.meta) })),
     follow_ups: followUps,
   }
@@ -448,6 +547,11 @@ export const listLeads = async (actor, q = {}) => {
     else add('l.owner_id = ?', q.owner_id)
   }
   if (q.follow_up === 'overdue') add('l.next_follow_up_at < UTC_TIMESTAMP()')
+  if (EXAM_STATUSES.includes(q.exam)) add('l.exam_status = ?', q.exam)
+  if (isManager(actor) && q.exam_coordinator_id) {
+    if (q.exam_coordinator_id === 'none') where.push('l.exam_coordinator_id IS NULL')
+    else add('l.exam_coordinator_id = ?', q.exam_coordinator_id)
+  }
 
   // Stage counts use every filter except the stage itself (for the tabs)
   const [countRows] = await pool.query(
@@ -464,12 +568,15 @@ export const listLeads = async (actor, q = {}) => {
     `SELECT l.id, l.name, l.phone, l.email, l.source, l.stage, l.course_id, l.owner_id, l.next_follow_up_at,
             l.created_at, l.stage_changed_at, l.user_id, c.title AS course_title, u.name AS owner_name,
             (e.id IS NOT NULL) AS enrolled,
+            l.exam_coordinator_id, ec.name AS exam_coordinator_name, l.exam_status, l.exam_scheduled_at,
+            l.exam_completed_at, l.exam_result, l.ticket_size, l.ticket_currency,
             COALESCE(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form_name')), JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form'))) AS form,
             JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.preferred_time')) AS preferred_time,
             LEFT(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.message')), 160) AS enquiry_message
      FROM leads l
      LEFT JOIN courses c ON c.id = l.course_id
      LEFT JOIN users u ON u.id = l.owner_id
+     LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
      LEFT JOIN enrollments e ON e.user_id = l.user_id AND e.course_id = l.course_id
      WHERE ${where.join(' AND ')}
      ORDER BY (l.next_follow_up_at IS NULL), l.next_follow_up_at ASC, l.id DESC
@@ -478,7 +585,11 @@ export const listLeads = async (actor, q = {}) => {
   )
   const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE ${where.join(' AND ')}`, values)
   return {
-    leads: rows.map((r) => ({ ...r, enrolled: Boolean(r.enrolled) })),
+    leads: rows.map((r) => ({
+      ...r,
+      enrolled: Boolean(r.enrolled),
+      ticket_size: r.ticket_size == null ? null : Number(r.ticket_size),
+    })),
     counts,
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
@@ -512,8 +623,47 @@ export const dashboard = async (actor) => {
      WHERE ${scope.sql} AND l.archived_at IS NULL`,
     scope.values
   )
+  const [[ex]] = await pool.query(
+    `SELECT
+       SUM(l.exam_status = 'scheduled') AS exams_scheduled,
+       SUM(l.exam_status = 'scheduled' AND l.exam_scheduled_at >= UTC_TIMESTAMP()
+           AND l.exam_scheduled_at < UTC_TIMESTAMP() + INTERVAL 7 DAY) AS exams_next_7_days,
+       SUM(l.exam_status = 'completed') AS exams_completed,
+       SUM(l.exam_status = 'completed' AND l.exam_completed_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01')) AS exams_completed_this_month,
+       SUM(l.exam_result = 'passed') AS exams_passed,
+       SUM(l.exam_status = 'completed' AND l.stage <> 'course_done') AS awaiting_course_done
+     FROM leads l WHERE ${scope.sql} AND l.archived_at IS NULL`,
+    scope.values
+  )
+  const [tickets] = await pool.query(
+    `SELECT l.ticket_currency AS currency, COUNT(*) AS leads, SUM(l.ticket_size) AS amount
+     FROM leads l WHERE ${scope.sql} AND l.archived_at IS NULL AND l.stage = 'application' AND l.ticket_size IS NOT NULL
+     GROUP BY l.ticket_currency`,
+    scope.values
+  )
+  const [upcomingExams] = await pool.query(
+    `SELECT l.id, l.name, l.exam_scheduled_at, c.title AS course_title, u.name AS owner_name, ec.name AS exam_coordinator_name
+     FROM leads l
+     LEFT JOIN courses c ON c.id = l.course_id
+     LEFT JOIN users u ON u.id = l.owner_id
+     LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
+     WHERE ${scope.sql} AND l.archived_at IS NULL AND l.exam_status = 'scheduled'
+     ORDER BY (l.exam_scheduled_at IS NULL), l.exam_scheduled_at ASC LIMIT 20`,
+    scope.values
+  )
   const num = (v) => Number(v ?? 0)
   return {
+    exams: {
+      scheduled: num(ex.exams_scheduled),
+      next_7_days: num(ex.exams_next_7_days),
+      completed: num(ex.exams_completed),
+      completed_this_month: num(ex.exams_completed_this_month),
+      passed: num(ex.exams_passed),
+      awaiting_course_done: num(ex.awaiting_course_done),
+      upcoming: upcomingExams,
+    },
+    // Open applications by currency (expected value)
+    pipeline: tickets.map((t) => ({ currency: t.currency, leads: num(t.leads), amount: Number(t.amount ?? 0) })),
     kpis: {
       open_leads: num(k.open_leads),
       new_leads: num(k.new_leads),
@@ -528,6 +678,96 @@ export const dashboard = async (actor) => {
     today: await listFollowUps(actor, { when: 'today' }),
     overdue: (await listFollowUps(actor, { when: 'overdue' })).slice(0, 20),
   }
+}
+
+// ── Exam coordination ─────────────────────────────────────────────────────
+
+/** Active Exam Coordinators (for the "Exam coordinator" picker). */
+export const examCoordinators = async (actor) => {
+  assertSalesUser(actor)
+  const [rows] = await pool.query(
+    `SELECT u.id, u.name,
+            (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = u.id AND l.archived_at IS NULL
+               AND l.exam_status <> 'completed') AS open_exams
+     FROM users u WHERE u.role = ? AND u.is_active = 1 AND u.deleted_at IS NULL ORDER BY u.name`,
+    [COORDINATOR]
+  )
+  return rows.map((r) => ({ ...r, open_exams: Number(r.open_exams) }))
+}
+
+/** Owner or Admin hands the lead to an Exam Coordinator (or removes them). The owner stays. */
+export const setExamCoordinator = async (req, id, { exam_coordinator_id }) => {
+  const actor = req.user
+  assertSalesUser(actor)
+  const lead = await loadVisibleLead(actor, id)
+  if (!canManageLead(actor, lead)) throw fail(403, "Only the lead's consultant or an Admin can assign the exam coordinator")
+  const to = exam_coordinator_id ?? null
+  if (to === lead.exam_coordinator_id) return getLead(actor, lead.id)
+  if (to != null) {
+    const [[u]] = await pool.query('SELECT id, name, role, is_active FROM users WHERE id = ? AND deleted_at IS NULL', [to])
+    if (!u || !u.is_active || u.role !== COORDINATOR) throw fail(400, 'Choose an active exam coordinator')
+  }
+  await pool.query('UPDATE leads SET exam_coordinator_id = ?, exam_coordinator_assigned_at = ? WHERE id = ?', [
+    to,
+    to ? toSqlDate(new Date()) : null,
+    lead.id,
+  ])
+  await addActivity(lead.id, actor.id, 'exam_coordinator', null, { from: lead.exam_coordinator_id ?? null, to })
+  await audit(req, {
+    action: 'lead.exam_coordinator',
+    targetType: 'lead',
+    targetId: lead.id,
+    details: { from: lead.exam_coordinator_id ?? null, to },
+  })
+  if (to) {
+    await notify(to, {
+      type: 'exam_assigned',
+      title: `New student for exam: ${lead.name}`,
+      body: `Assigned by ${actor.name ?? 'a team member'}`,
+      link: `/consultant/leads?lead=${lead.id}`,
+    })
+  }
+  return getLead(actor, lead.id)
+}
+
+/** Anyone with access to the lead: schedule, complete or reset the exam. */
+export const updateExam = async (req, id, { status, scheduled_at, completed_at, result, note }) => {
+  const actor = req.user
+  const lead = await loadVisibleLead(actor, id)
+  if (!EXAM_STATUSES.includes(status)) throw fail(400, 'Unknown exam status')
+  const next = { status, scheduled_at: null, completed_at: null, result: null, note: note?.trim() || null }
+  if (status === 'scheduled') {
+    if (!scheduled_at) throw fail(400, 'Choose the exam date')
+    next.scheduled_at = toSqlDate(scheduled_at)
+  }
+  if (status === 'completed') {
+    next.scheduled_at = lead.exam_scheduled_at ? toSqlDate(lead.exam_scheduled_at) : null
+    next.completed_at = toSqlDate(completed_at || new Date())
+    next.result = result ?? null
+  }
+  await pool.query(
+    `UPDATE leads SET exam_status = ?, exam_scheduled_at = ?, exam_completed_at = ?, exam_result = ?, exam_note = ?
+     WHERE id = ?`,
+    [next.status, next.scheduled_at, next.completed_at, next.result, next.note, lead.id]
+  )
+  const type = { scheduled: 'exam_scheduled', completed: 'exam_completed', not_scheduled: 'exam_cleared' }[status]
+  await addActivity(lead.id, actor.id, type, next.note, {
+    ...(next.scheduled_at && { scheduled_at: sqlToIso(next.scheduled_at) }),
+    ...(next.completed_at && { completed_at: sqlToIso(next.completed_at) }),
+    ...(next.result && { result: next.result }),
+  })
+  await audit(req, { action: `lead.${type}`, targetType: 'lead', targetId: lead.id, details: { status, result: next.result } })
+  if (status === 'completed') {
+    const others = [lead.owner_id, lead.exam_coordinator_id].filter((u) => u && u !== actor.id)
+    const note = {
+      type: 'exam_completed',
+      title: `${lead.name} completed the exam${next.result ? ` (${next.result})` : ''}`,
+      body: 'You can now mark the course as done',
+    }
+    if (others.length) await notify(others, { ...note, link: `/consultant/leads?lead=${lead.id}` })
+    else if (isCoordinator(actor) && !lead.owner_id) await notify(await managerIds(), { ...note, link: `/admin/leads?lead=${lead.id}` })
+  }
+  return getLead(actor, lead.id)
 }
 
 /** People a lead can be assigned to (Admin create form). */

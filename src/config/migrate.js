@@ -703,6 +703,25 @@ const STEPS = [
     },
   },
   {
+    name: 'leads: exam coordinator, exam schedule / completion, ticket size',
+    run: async () => {
+      const added = [
+        await addColumnIfMissing('leads', 'exam_coordinator_id', 'INT NULL'),
+        await addColumnIfMissing('leads', 'exam_coordinator_assigned_at', 'DATETIME NULL'),
+        await addColumnIfMissing('leads', 'exam_status', "VARCHAR(20) NOT NULL DEFAULT 'not_scheduled'"),
+        await addColumnIfMissing('leads', 'exam_scheduled_at', 'DATETIME NULL'),
+        await addColumnIfMissing('leads', 'exam_completed_at', 'DATETIME NULL'),
+        await addColumnIfMissing('leads', 'exam_result', 'VARCHAR(10) NULL'),
+        await addColumnIfMissing('leads', 'exam_note', 'VARCHAR(255) NULL'),
+        await addColumnIfMissing('leads', 'ticket_size', 'DECIMAL(12,2) NULL'),
+        await addColumnIfMissing('leads', 'ticket_currency', 'CHAR(3) NULL'),
+      ]
+      if (added[0]) await pool.query('CREATE INDEX idx_leads_exam_coord ON leads (exam_coordinator_id, exam_status)')
+      if (added[2]) await pool.query('CREATE INDEX idx_leads_exam ON leads (exam_status, exam_completed_at)')
+      return added.some(Boolean)
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

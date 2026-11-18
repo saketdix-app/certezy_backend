@@ -35,6 +35,15 @@ export const update = handle(async (req, res) =>
 export const changeStage = handle(async (req, res) =>
   success(res, { message: 'Status updated', data: await service.changeStage(req, req.params.id, req.body) })
 )
+export const examCoordinators = handle(async (req, res) =>
+  success(res, { data: await service.examCoordinators(req.user) })
+)
+export const setExamCoordinator = handle(async (req, res) =>
+  success(res, { message: 'Exam coordinator updated', data: await service.setExamCoordinator(req, req.params.id, req.body) })
+)
+export const updateExam = handle(async (req, res) =>
+  success(res, { message: 'Exam updated', data: await service.updateExam(req, req.params.id, req.body) })
+)
 export const logActivity = handle(async (req, res) =>
   success(res, { message: 'Saved', data: await service.logActivity(req, req.params.id, req.body) })
 )

@@ -38,6 +38,13 @@ export const TRANSITIONS = {
 }
 
 export const CLOSED_STAGES = ['not_interested', 'junk']
+
+// Ticket size (expected deal value) recorded when a lead moves to Application
+export const TICKET_CURRENCIES = ['INR', 'USD']
+
+// Exam progress on a lead, worked by its Exam Coordinator (or anyone with access)
+export const EXAM_STATUSES = ['not_scheduled', 'scheduled', 'completed']
+export const EXAM_RESULTS = ['passed', 'failed']
 // Stages that need a recorded reason to enter
 export const REASON_REQUIRED = ['not_interested', 'junk', 'on_hold']
 

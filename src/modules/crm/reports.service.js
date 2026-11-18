@@ -9,6 +9,8 @@
 //   • Lead ageing (open leads by age) and time to first contact
 //   • LMS: course assignments, enrollments, certificates issued
 //   • Operations: unassigned, transfers, overdue follow-ups, distribution balance
+//   • Exams: scheduled / completed / passed in the period, per Exam Coordinator
+//   • Ticket size (INR / USD) of applications, overall and per consultant
 // Days are counted in the business timezone (APP_TIMEZONE).
 
 import { pool } from '../../config/db.js'
@@ -121,6 +123,13 @@ export const overview = async (actor, q = {}) => {
      GROUP BY p.attributed_to, p.currency`,
     [start, end]
   )
+  const [ticketRows] = await pool.query(
+    `SELECT l.owner_id AS id, l.ticket_currency AS currency, COUNT(*) AS leads, SUM(l.ticket_size) AS amount
+     FROM leads l WHERE l.ticket_size IS NOT NULL AND l.owner_id IS NOT NULL AND l.archived_at IS NULL
+       AND l.created_at >= ? AND l.created_at < ?
+     GROUP BY l.owner_id, l.ticket_currency`,
+    [start, end]
+  )
   const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]))
   const ownedOf = byId(owned)
   const attemptsOf = byId(attempts)
@@ -142,6 +151,9 @@ export const overview = async (actor, q = {}) => {
       conversion_rate: rate(n(o.converted), n(o.leads)),
       sales: money.reduce((s, r) => s + n(r.sales), 0),
       revenue: Object.fromEntries(money.map((r) => [r.currency, round1(n(r.amount))])),
+      ticket_size: Object.fromEntries(
+        ticketRows.filter((r) => r.id === p.id).map((r) => [r.currency, round1(n(r.amount))])
+      ),
       avg_first_contact_hours: o.avg_first_contact_min == null ? null : round1(n(o.avg_first_contact_min) / 60),
     }
   })
@@ -185,6 +197,44 @@ export const overview = async (actor, q = {}) => {
              WHERE p.status = 'success' AND d2.created_at >= ? AND d2.created_at < ? AND p.currency = 'INR') AS revenue_inr
      FROM discount_links d WHERE d.created_at >= ? AND d.created_at < ?`,
     [start, end, start, end, start, end]
+  )
+
+  // ── Exams (by date the exam was scheduled for / completed) ──
+  const [[examTotals]] = await pool.query(
+    `SELECT
+       SUM(l.exam_status = 'scheduled') AS scheduled_now,
+       SUM(l.exam_status = 'scheduled' AND l.exam_scheduled_at < UTC_TIMESTAMP()) AS scheduled_overdue,
+       SUM(l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
+       SUM(l.exam_result = 'passed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS passed,
+       SUM(l.exam_result = 'failed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS failed,
+       SUM(l.exam_status = 'completed' AND l.stage <> 'course_done') AS awaiting_course_done,
+       SUM(l.exam_coordinator_id IS NULL AND l.stage = 'application') AS applications_without_coordinator
+     FROM leads l WHERE l.archived_at IS NULL`,
+    [start, end, start, end, start, end]
+  )
+  const [examSeries] = await pool.query(
+    `SELECT ${periodExpr('l.exam_completed_at', group, offset)} AS period, COUNT(*) AS completed
+     FROM leads l WHERE l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ? AND l.archived_at IS NULL
+     GROUP BY period ORDER BY period`,
+    [start, end]
+  )
+  const [coordinatorRows] = await pool.query(
+    `SELECT u.id, u.name, u.is_active,
+            SUM(l.id IS NOT NULL) AS assigned,
+            SUM(l.exam_status = 'scheduled') AS scheduled,
+            SUM(l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
+            SUM(l.exam_result = 'passed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS passed,
+            SUM(l.stage = 'course_done') AS course_done
+     FROM users u
+     LEFT JOIN leads l ON l.exam_coordinator_id = u.id AND l.archived_at IS NULL
+     WHERE u.role = 'exam_coordinator' AND u.deleted_at IS NULL
+     GROUP BY u.id, u.name, u.is_active ORDER BY u.name`,
+    [start, end, start, end]
+  )
+  const [pipelineRows] = await pool.query(
+    `SELECT l.ticket_currency AS currency, COUNT(*) AS leads, SUM(l.ticket_size) AS amount
+     FROM leads l WHERE l.stage = 'application' AND l.ticket_size IS NOT NULL AND l.archived_at IS NULL
+     GROUP BY l.ticket_currency`
   )
 
   // ── Operations ──
@@ -247,6 +297,23 @@ export const overview = async (actor, q = {}) => {
       revenue: { USD: round1(n(links.revenue_usd)), INR: round1(n(links.revenue_inr)) },
     },
     operations: { ...Object.fromEntries(Object.entries(ops).map(([k, v]) => [k, n(v)])), round_robin_balance: balance },
+    exams: {
+      ...Object.fromEntries(Object.entries(examTotals).map(([k, v]) => [k, n(v)])),
+      pass_rate: rate(n(examTotals.passed), n(examTotals.passed) + n(examTotals.failed)),
+      series: examSeries.map((r) => ({ period: r.period, completed: n(r.completed) })),
+      coordinators: coordinatorRows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        active: Boolean(r.is_active),
+        assigned: n(r.assigned),
+        scheduled: n(r.scheduled),
+        completed: n(r.completed),
+        passed: n(r.passed),
+        course_done: n(r.course_done),
+      })),
+    },
+    // Open applications: expected value by currency
+    pipeline: pipelineRows.map((r) => ({ currency: r.currency, leads: n(r.leads), amount: round1(n(r.amount)) })),
   }
 }
 
@@ -268,8 +335,11 @@ export const exportLeads = async (req, q = {}) => {
     `SELECT l.id, l.created_at, l.name, l.phone, l.email, l.source,
             JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.campaign')) AS campaign, c.title AS course, l.stage,
             l.disposition_reason, u.name AS owner, l.first_contact_at, l.next_follow_up_at,
+            l.ticket_size, l.ticket_currency, ec.name AS exam_coordinator, l.exam_status, l.exam_scheduled_at,
+            l.exam_completed_at, l.exam_result,
             (SELECT COUNT(*) FROM payments p WHERE p.lead_id = l.id AND p.status = 'success') AS sales
      FROM leads l LEFT JOIN courses c ON c.id = l.course_id LEFT JOIN users u ON u.id = l.owner_id
+     LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
      WHERE l.created_at >= ? AND l.created_at < ? AND l.archived_at IS NULL ORDER BY l.id`,
     [start, end]
   )
@@ -289,5 +359,12 @@ export const exportLeads = async (req, q = {}) => {
     ['first_contact_at', 'First contact (UTC)'],
     ['next_follow_up_at', 'Next follow-up (UTC)'],
     ['sales', 'Paid sales'],
+    ['ticket_size', 'Ticket size'],
+    ['ticket_currency', 'Ticket currency'],
+    ['exam_coordinator', 'Exam coordinator'],
+    ['exam_status', 'Exam status'],
+    ['exam_scheduled_at', 'Exam date (UTC)'],
+    ['exam_completed_at', 'Exam completed (UTC)'],
+    ['exam_result', 'Exam result'],
   ])
 }
