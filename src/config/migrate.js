@@ -722,6 +722,10 @@ const STEPS = [
     },
   },
   {
+    name: 'consultant_settings.on_leave_from (plan leave ahead: from – until)',
+    run: () => addColumnIfMissing('consultant_settings', 'on_leave_from', 'DATE NULL'),
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

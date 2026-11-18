@@ -45,12 +45,7 @@ router.get(
   permission('can_view_payments'),
   controller.checkGateways
 )
-router.get(
-  '/admin/revenue',
-  authenticate,
-  role('admin', 'sub_admin'),
-  permission('can_view_payments'),
-  controller.getRevenueStats
-)
+// Revenue totals: Super Admins only
+router.get('/admin/revenue', authenticate, role('super_admin'), controller.getRevenueStats)
 
 export default router

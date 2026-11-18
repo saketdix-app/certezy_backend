@@ -17,6 +17,7 @@ import { pool } from '../../config/db.js'
 import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { STAGES } from './crm.constants.js'
+import { TICKET_EARNED_SQL } from './leads.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const assertManager = (actor) => {
@@ -63,7 +64,22 @@ const breakdown = async (keyExpr, start, end) => {
   return rows.map((r) => ({ key: r.k ?? null, leads: n(r.leads), converted: n(r.converted), rate: rate(n(r.converted), n(r.leads)) }))
 }
 
+/** Revenue figures are for Super Admins only; Admins get the same report without amounts. */
+const withoutMoney = (r) => ({
+  ...r,
+  money_visible: false,
+  consultants: r.consultants.map((c) => ({ ...c, revenue: null, ticket_size: null, ticket_revenue: null })),
+  discount_links: { ...r.discount_links, revenue: null },
+  pipeline: null,
+  ticket_revenue: null,
+})
+
 export const overview = async (actor, q = {}) => {
+  const report = await buildOverview(actor, q)
+  return actor.role === 'super_admin' ? { ...report, money_visible: true } : withoutMoney(report)
+}
+
+const buildOverview = async (actor, q = {}) => {
   assertManager(actor)
   const { start, end } = rangeOf(q)
   const group = ['day', 'week', 'month'].includes(q.group) ? q.group : 'day'
@@ -130,6 +146,14 @@ export const overview = async (actor, q = {}) => {
      GROUP BY l.owner_id, l.ticket_currency`,
     [start, end]
   )
+  // Ticket size earned in the period (paid or Course Done), by consultant and currency
+  const [earnedRows] = await pool.query(
+    `SELECT t.owner_id AS id, t.currency, COUNT(*) AS leads, SUM(t.amount) AS amount,
+            SUM(t.paid) AS paid_leads, SUM(t.course_done) AS course_done_leads
+     FROM (${TICKET_EARNED_SQL}) t WHERE t.earned_at >= ? AND t.earned_at < ?
+     GROUP BY t.owner_id, t.currency`,
+    [start, end]
+  )
   const byId = (rows) => Object.fromEntries(rows.map((r) => [r.id, r]))
   const ownedOf = byId(owned)
   const attemptsOf = byId(attempts)
@@ -153,6 +177,9 @@ export const overview = async (actor, q = {}) => {
       revenue: Object.fromEntries(money.map((r) => [r.currency, round1(n(r.amount))])),
       ticket_size: Object.fromEntries(
         ticketRows.filter((r) => r.id === p.id).map((r) => [r.currency, round1(n(r.amount))])
+      ),
+      ticket_revenue: Object.fromEntries(
+        earnedRows.filter((r) => r.id === p.id).map((r) => [r.currency, round1(n(r.amount))])
       ),
       avg_first_contact_hours: o.avg_first_contact_min == null ? null : round1(n(o.avg_first_contact_min) / 60),
     }
@@ -312,6 +339,17 @@ export const overview = async (actor, q = {}) => {
         course_done: n(r.course_done),
       })),
     },
+    // Ticket size earned in the period: the lead paid or reached Course Done
+    ticket_revenue: Object.values(
+      earnedRows.reduce((acc, r) => {
+        const t = (acc[r.currency] ??= { currency: r.currency, leads: 0, amount: 0, paid_leads: 0, course_done_leads: 0 })
+        t.leads += n(r.leads)
+        t.amount = round1(t.amount + n(r.amount))
+        t.paid_leads += n(r.paid_leads)
+        t.course_done_leads += n(r.course_done_leads)
+        return acc
+      }, {})
+    ),
     // Open applications: expected value by currency
     pipeline: pipelineRows.map((r) => ({ currency: r.currency, leads: n(r.leads), amount: round1(n(r.amount)) })),
   }

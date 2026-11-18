@@ -553,6 +553,14 @@ export const listLeads = async (actor, q = {}) => {
     else add('l.exam_coordinator_id = ?', q.exam_coordinator_id)
   }
 
+  // Admins: every matching lead id (for "select all N" bulk moves)
+  if (q.ids_only && isManager(actor)) {
+    if (q.stage && STAGES.includes(q.stage)) add('l.stage = ?', q.stage)
+    const [ids] = await pool.query(`SELECT l.id FROM leads l WHERE ${where.join(' AND ')} ORDER BY l.id LIMIT 2000`, values)
+    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE ${where.join(' AND ')}`, values)
+    return { ids: ids.map((r) => r.id), total: Number(total), capped: Number(total) > ids.length }
+  }
+
   // Stage counts use every filter except the stage itself (for the tabs)
   const [countRows] = await pool.query(
     `SELECT l.stage, COUNT(*) AS n FROM leads l WHERE ${where.join(' AND ')} GROUP BY l.stage`,
@@ -594,6 +602,22 @@ export const listLeads = async (actor, q = {}) => {
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   }
 }
+
+/**
+ * Leads whose ticket size counts as earned: a confirmed payment on the lead,
+ * or the lead reached Course Done. earned_at = whichever came first.
+ */
+export const TICKET_EARNED_SQL = `
+  SELECT l.id, l.owner_id, l.ticket_currency AS currency, l.ticket_size AS amount,
+         LEAST(
+           COALESCE((SELECT MIN(p.created_at) FROM payments p WHERE p.lead_id = l.id AND p.status = 'success'), '9999-12-31'),
+           CASE WHEN l.stage = 'course_done' THEN COALESCE(l.stage_changed_at, l.updated_at, l.created_at) ELSE '9999-12-31' END
+         ) AS earned_at,
+         EXISTS (SELECT 1 FROM payments p WHERE p.lead_id = l.id AND p.status = 'success') AS paid,
+         (l.stage = 'course_done') AS course_done
+  FROM leads l
+  WHERE l.archived_at IS NULL AND l.ticket_size IS NOT NULL
+    AND (l.stage = 'course_done' OR EXISTS (SELECT 1 FROM payments p WHERE p.lead_id = l.id AND p.status = 'success'))`
 
 /** KPI row and today's work (PRD §4.1). Sales/revenue arrive with phase 5. */
 export const dashboard = async (actor) => {
@@ -652,7 +676,25 @@ export const dashboard = async (actor) => {
     scope.values
   )
   const num = (v) => Number(v ?? 0)
+  const isSuper = actor.role === 'super_admin'
+  // Revenue by ticket size: leads that paid or reached Course Done (Super Admins only)
+  let ticketRevenue = null
+  if (isSuper) {
+    const [rows] = await pool.query(
+      `SELECT t.currency, COUNT(*) AS leads, SUM(t.amount) AS amount,
+              SUM(CASE WHEN t.earned_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01') THEN t.amount ELSE 0 END) AS this_month
+       FROM (${TICKET_EARNED_SQL}) t GROUP BY t.currency`
+    )
+    ticketRevenue = rows.map((r) => ({
+      currency: r.currency,
+      leads: num(r.leads),
+      amount: Number(r.amount ?? 0),
+      this_month: Number(r.this_month ?? 0),
+    }))
+  }
   return {
+    money_visible: isSuper,
+    ticket_revenue: ticketRevenue,
     exams: {
       scheduled: num(ex.exams_scheduled),
       next_7_days: num(ex.exams_next_7_days),
@@ -663,7 +705,7 @@ export const dashboard = async (actor) => {
       upcoming: upcomingExams,
     },
     // Open applications by currency (expected value)
-    pipeline: tickets.map((t) => ({ currency: t.currency, leads: num(t.leads), amount: Number(t.amount ?? 0) })),
+    pipeline: isSuper ? tickets.map((t) => ({ currency: t.currency, leads: num(t.leads), amount: Number(t.amount ?? 0) })) : null,
     kpis: {
       open_leads: num(k.open_leads),
       new_leads: num(k.new_leads),
@@ -774,10 +816,12 @@ export const updateExam = async (req, id, { status, scheduled_at, completed_at, 
 export const assignableOwners = async (actor) => {
   if (!isManager(actor)) throw fail(403, 'Only Admins assign leads')
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.role, cs.accepting_leads
+    `SELECT u.id, u.name, u.role, cs.accepting_leads,
+            (cs.on_leave_until >= CURDATE() AND (cs.on_leave_from IS NULL OR cs.on_leave_from <= CURDATE())) AS on_leave,
+            cs.on_leave_until
      FROM users u LEFT JOIN consultant_settings cs ON cs.user_id = u.id
      WHERE u.is_active = 1 AND u.deleted_at IS NULL AND u.role IN ('consultant', 'admin', 'super_admin')
      ORDER BY FIELD(u.role, 'consultant', 'admin', 'super_admin'), u.name`
   )
-  return rows
+  return rows.map((r) => ({ ...r, on_leave: Boolean(r.on_leave) }))
 }

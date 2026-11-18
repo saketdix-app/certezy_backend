@@ -62,6 +62,11 @@ const createSubAdmin = async (req, res, next) => {
 const getDashboardStats = async (req, res, next) => {
   try {
     const stats = await service.getDashboardStats()
+    // Revenue is for Super Admins only
+    if (req.user.role !== 'super_admin') {
+      for (const k of Object.keys(stats)) if (/revenue/i.test(k)) stats[k] = null
+      stats.money_visible = false
+    } else stats.money_visible = true
     return success(res, { message: 'Dashboard stats fetched', data: stats })
   } catch (err) {
     next(err)

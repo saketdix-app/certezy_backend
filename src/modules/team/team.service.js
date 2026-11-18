@@ -134,7 +134,11 @@ export const listTeam = async ({ role, status, search }) => {
             (u.password IS NULL AND u.oauth_provider = 'local') AS invite_pending,
             g.granted_at AS sa_grant_at, gu.name AS sa_granted_by,
             ${STAFF_PERMISSIONS.map((k) => `p.${k}`).join(', ')},
-            cs.accepting_leads, cs.paused_reason, cs.on_leave_until, cs.daily_limit, cs.open_limit
+            cs.accepting_leads, cs.paused_reason, cs.on_leave_from, cs.on_leave_until, cs.daily_limit, cs.open_limit,
+            (SELECT COUNT(*) FROM leads l WHERE l.owner_id = u.id AND l.archived_at IS NULL
+               AND l.stage NOT IN ('course_done', 'not_interested', 'junk')) AS open_leads,
+            (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = u.id AND l.archived_at IS NULL
+               AND l.exam_status <> 'completed') AS open_exams
      FROM users u
      LEFT JOIN admin_permissions p ON p.user_id = u.id
      LEFT JOIN consultant_settings cs ON cs.user_id = u.id
@@ -151,6 +155,8 @@ export const listTeam = async ({ role, status, search }) => {
     allocation: r.role === 'consultant' ? allocationFrom(r) : null,
     is_active: Boolean(r.is_active),
     invite_pending: Boolean(r.invite_pending),
+    open_leads: Number(r.open_leads ?? 0),
+    open_exams: Number(r.open_exams ?? 0),
     can_create_super_admin: r.role === SUPER || Boolean(r.sa_grant_at),
     super_admin_grant: r.sa_grant_at ? { granted_at: r.sa_grant_at, granted_by: r.sa_granted_by } : null,
   }))
@@ -160,7 +166,7 @@ export const listTeam = async ({ role, status, search }) => {
 
 const withoutPermissionColumns = (row) => {
   const out = { ...row }
-  for (const k of [...STAFF_PERMISSIONS, 'accepting_leads', 'paused_reason', 'on_leave_until', 'daily_limit', 'open_limit'])
+  for (const k of [...STAFF_PERMISSIONS, 'accepting_leads', 'paused_reason', 'on_leave_from', 'on_leave_until', 'daily_limit', 'open_limit'])
     delete out[k]
   return out
 }
@@ -171,17 +177,28 @@ const permissionsFor = (role, row) =>
     STAFF_PERMISSIONS.map((k) => [k, role === SUPER || role === 'admin' ? true : Boolean(row?.[k])])
   )
 
+const dayOf = (d) => (d ? (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10) : null)
+/** Leave state today: 'on_leave' (inside from–until), 'leave_planned' (starts later) or null. */
+export const leaveState = (from, until, today = new Date().toISOString().slice(0, 10)) => {
+  const f = dayOf(from)
+  const u = dayOf(until)
+  if (!u || u < today) return null
+  return f && f > today ? 'leave_planned' : 'on_leave'
+}
+
 const allocationFrom = (row) => {
-  const onLeave = row?.on_leave_until && new Date(row.on_leave_until) >= new Date(new Date().toDateString())
+  const leave = leaveState(row?.on_leave_from, row?.on_leave_until)
   const accepting = row?.accepting_leads == null ? true : Boolean(row.accepting_leads)
   return {
     accepting_leads: accepting,
     paused_reason: row?.paused_reason ?? null,
-    on_leave_until: row?.on_leave_until ?? null,
+    on_leave_from: dayOf(row?.on_leave_from),
+    on_leave_until: dayOf(row?.on_leave_until),
+    leave_planned: leave === 'leave_planned',
     daily_limit: row?.daily_limit ?? null,
     open_limit: row?.open_limit ?? null,
     // What Round Robin (phase 4) will see
-    state: !accepting ? 'paused' : onLeave ? 'on_leave' : 'receiving',
+    state: !accepting ? 'paused' : leave === 'on_leave' ? 'on_leave' : 'receiving',
   }
 }
 
@@ -235,19 +252,23 @@ export const setAllocation = async (req, id, body) => {
   const values = {
     accepting_leads: body.accepting_leads ? 1 : 0,
     paused_reason: body.accepting_leads ? null : body.paused_reason?.trim() || null,
+    on_leave_from: body.on_leave_until && body.on_leave_from ? new Date(body.on_leave_from).toISOString().slice(0, 10) : null,
     on_leave_until: body.on_leave_until ? new Date(body.on_leave_until).toISOString().slice(0, 10) : null,
     daily_limit: body.daily_limit ?? null,
     open_limit: body.open_limit ?? null,
   }
+  if (values.on_leave_from && values.on_leave_until && values.on_leave_from > values.on_leave_until) {
+    throw fail(400, 'The leave start date must be on or before the end date')
+  }
   const [[before]] = await pool.query('SELECT * FROM consultant_settings WHERE user_id = ?', [target.id])
   await pool.query(
     `INSERT INTO consultant_settings
-       (user_id, accepting_leads, paused_reason, on_leave_until, daily_limit, open_limit, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
+       (user_id, accepting_leads, paused_reason, on_leave_from, on_leave_until, daily_limit, open_limit, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
      ON DUPLICATE KEY UPDATE accepting_leads = VALUES(accepting_leads), paused_reason = VALUES(paused_reason),
-       on_leave_until = VALUES(on_leave_until), daily_limit = VALUES(daily_limit), open_limit = VALUES(open_limit),
+       on_leave_from = VALUES(on_leave_from), on_leave_until = VALUES(on_leave_until), daily_limit = VALUES(daily_limit), open_limit = VALUES(open_limit),
        updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)`,
-    [target.id, values.accepting_leads, values.paused_reason, values.on_leave_until, values.daily_limit, values.open_limit, actor.id]
+    [target.id, values.accepting_leads, values.paused_reason, values.on_leave_from, values.on_leave_until, values.daily_limit, values.open_limit, actor.id]
   )
   const action =
     Boolean(before?.accepting_leads ?? 1) !== Boolean(values.accepting_leads)
@@ -450,6 +471,41 @@ export const setStatus = async (req, id, isActive) => {
   if (!isActive) await pool.query('DELETE FROM refresh_tokens WHERE user_id = ?', [target.id]) // signed out
   await audit(req, { action, targetType: 'user', targetId: target.id, details: { role: target.role } })
   return getMember(target.id)
+}
+
+// ── Delete (soft): blocked for good, history kept ─────────────────────────
+
+/** May `actor` delete `id`? Returns the target. The email must be typed to confirm. */
+export const assertCanDelete = async (req, id, confirmEmail) => {
+  const actor = req.user
+  const target = await getUser(id)
+  if (!target || target.deleted_at || !STAFF_ROLES.includes(target.role)) throw fail(404, 'Team member not found')
+  if (Number(target.id) === Number(actor.id)) throw await denied(req, 'user.delete', target, "You can't delete your own account")
+  if (!canManage(actor, target)) throw await denied(req, 'user.delete', target, "You can't delete this account")
+  if (target.role === SUPER && (await activeSuperAdmins()).filter((u) => u.id !== target.id).length < 1) {
+    throw fail(409, "This is the last active Super Admin — it can't be deleted")
+  }
+  if (String(confirmEmail ?? '').trim().toLowerCase() !== String(target.email).toLowerCase()) {
+    throw fail(400, 'Type their email address exactly to confirm')
+  }
+  return target
+}
+
+/**
+ * Remove a team member: they can't sign in again, disappear from the team,
+ * pickers and Round Robin, and their email is freed for a new account.
+ * Their name stays on past activity, payments and reports.
+ */
+export const deleteMember = async (req, target) => {
+  await pool.query(
+    // The address is freed (kept in the audit log) so it can be invited again
+    `UPDATE users SET deleted_at = UTC_TIMESTAMP(), is_active = 0, email = CONCAT('deleted-', id, '@removed.invalid') WHERE id = ?`,
+    [target.id]
+  )
+  await pool.query('DELETE FROM refresh_tokens WHERE user_id = ?', [target.id])
+  await pool.query('DELETE FROM distribution_pool_members WHERE user_id = ?', [target.id]).catch(() => {})
+  await audit(req, { action: 'user.delete', targetType: 'user', targetId: target.id, details: { role: target.role, email: target.email } })
+  return { id: target.id, deleted: true }
 }
 
 /** Guard for the older Users page status toggle: same rules as the Team page. */
