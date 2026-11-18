@@ -36,4 +36,13 @@ const passwordResetLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-export { loginLimiter, registerLimiter, apiLimiter, passwordResetLimiter }
+// Course-page enquiry forms: enough for a real person (and a shared office IP), not for a bot
+const enquiryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: env.isProd ? 12 : 500,
+  message: { success: false, message: 'Too many requests. Please try again later or contact us by email.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+export { loginLimiter, registerLimiter, apiLimiter, passwordResetLimiter, enquiryLimiter }

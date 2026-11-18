@@ -198,6 +198,14 @@ const updateInrPricing = (id, { price_inr, original_price_inr, inr_enabled }) =>
     id,
   ])
 
+// ── Course page content: exam & certification text, FAQs ───────────────────
+const updatePageContent = (id, { exam_info, faqs }) =>
+  pool.query('UPDATE courses SET exam_info = ?, faqs = ? WHERE id = ?', [
+    exam_info?.trim() ? exam_info.trim() : null,
+    Array.isArray(faqs) && faqs.length ? JSON.stringify(faqs) : null,
+    id,
+  ])
+
 // ── Update course ──────────────────────────────────────────────────────────
 const updateCourse = (
   id,
@@ -297,4 +305,5 @@ export {
   updateRating,
   updateCourseMeta,
   updateInrPricing,
+  updatePageContent,
 }

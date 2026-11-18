@@ -261,7 +261,32 @@ const sendSecurityNoticeMail = (to, { name, title, lines = [] }) =>
     `,
   })
 
+// Course syllabus, sent when someone asks for it on the course page
+const sendSyllabusMail = (to, { name, courseTitle, courseUrl, sections = [] }) =>
+  sendMail({
+    to,
+    replyTo: env.supportEmail,
+    subject: `Your ${courseTitle} syllabus — CERTEZY`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p>Here is the syllabus for <b>${escapeHtml(courseTitle)}</b>.</p>
+        ${sections
+          .map(
+            (s, i) => `
+          <p style="margin:16px 0 4px;font-weight:bold;color:#1b5582">${i + 1}. ${escapeHtml(s.title)}</p>
+          <ul style="margin:0;padding-left:20px;color:#334155">${s.lessons.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`
+          )
+          .join('')}
+        <p style="margin-top:24px"><a href="${courseUrl}" style="background:#236a9e;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">View the course</a></p>
+        <p style="font-size:13px;color:#5e6e85">Questions? Reply to this email and an advisor will help you.<br>
+          CERTEZY E-Learning Pvt. Ltd. · ${env.supportEmail}</p>
+      </div>
+    `,
+  })
+
 export {
+  sendSyllabusMail,
   sendStaffInviteMail,
   sendSecurityNoticeMail,
   sendPasswordResetMail,

@@ -648,6 +648,14 @@ const STEPS = [
     },
   },
   {
+    name: 'courses.exam_info (exam & certification section on the course page)',
+    run: () => addColumnIfMissing('courses', 'exam_info', 'TEXT NULL'),
+  },
+  {
+    name: 'courses.faqs (FAQ section on the course page, JSON [{ q, a }])',
+    run: () => addColumnIfMissing('courses', 'faqs', 'JSON NULL'),
+  },
+  {
     name: 'integrations.sync_cursor holds one cursor per LinkedIn ad account',
     run: async () => {
       const col = await columnInfo('integrations', 'sync_cursor')
