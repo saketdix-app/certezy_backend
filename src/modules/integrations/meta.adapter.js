@@ -131,3 +131,29 @@ export const listForms = async ({ fetchImpl = fetch } = {}) => {
   }
   return { forms, errors }
 }
+
+/**
+ * Leads submitted on one form after `sinceSec` (Unix seconds), all result
+ * pages: GET /{form_id}/leads?filtering=[time_created > since]. Uses the
+ * token of the Page that owns the form. Facebook keeps leads for 90 days.
+ */
+export const fetchFormLeads = async (form, sinceSec, { fetchImpl = fetch } = {}) => {
+  const { pages, pageAccessToken, graphVersion } = await getCredentials('meta')
+  const token = pages.find((p) => String(p.id) === String(form.owner_id))?.token ?? pageAccessToken
+  if (!token) throw new Error('The Meta Page access token is not set (Admin → Integrations)')
+  const filtering = JSON.stringify([{ field: 'time_created', operator: 'GREATER_THAN', value: Math.floor(sinceSec) }])
+  const out = []
+  let after = null
+  for (let n = 0; n < 20; n++) {
+    const q = new URLSearchParams({ fields: FIELDS, filtering, limit: '100', ...(after && { after }) })
+    const res = await fetchImpl(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(form.id)}/leads?${q}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(`Meta API ${res.status}: ${data?.error?.message ?? 'request failed'}`)
+    out.push(...(data.data ?? []))
+    after = data.paging?.next ? data.paging?.cursors?.after : null
+    if (!after) break
+  }
+  return out
+}
