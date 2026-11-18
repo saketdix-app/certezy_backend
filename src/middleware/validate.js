@@ -132,6 +132,12 @@ const courseFields = {
   requirements: Joi.string().allow(''),
   what_you_learn: Joi.string().allow(''),
   certificate_eligible: Joi.number().integer().valid(0, 1),
+  // Course page: exam & certification text, and FAQs (empty = section hidden)
+  exam_info: Joi.string().max(20000).allow('', null),
+  faqs: Joi.array()
+    .items(Joi.object({ q: Joi.string().trim().min(3).max(300).required(), a: Joi.string().trim().min(1).max(3000).required() }))
+    .max(40)
+    .allow(null),
 }
 
 const createCourseSchema = Joi.object(courseFields).fork(['title', 'category_id'], (f) => f.required())
@@ -449,6 +455,21 @@ const schemas = {
     id: Joi.string().max(100).optional(),
     ids: Joi.array().items(Joi.string().max(100)).min(1).max(100).optional(),
   }).or('id', 'ids'),
+  // Public course-page enquiry forms (enquiries module)
+  enquiry: Joi.object({
+    kind: Joi.string().valid('advisor', 'syllabus', 'team').required(),
+    course_id: Joi.number().integer().positive().allow(null).optional(),
+    name: Joi.string().trim().min(2).max(150).required(),
+    email: Joi.string().trim().email().max(150).lowercase().allow('', null).optional(),
+    phone: Joi.string().trim().pattern(/^[+\d][\d\s()-]{6,24}$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'Enter a valid phone number' }),
+    company: Joi.string().trim().max(150).allow('', null).optional(),
+    team_size: Joi.number().integer().min(2).max(100000).allow(null).optional(),
+    preferred_time: Joi.string().trim().max(60).allow('', null).optional(),
+    message: Joi.string().trim().max(1000).allow('', null).optional(),
+    consent: Joi.boolean().valid(true).required().messages({ 'any.only': 'Please agree to be contacted' }),
+    website: Joi.string().allow('').max(200).optional(), // honeypot: real people never see or fill it
+  }),
   completeFollowUp: Joi.object({
     status: Joi.string().valid('done', 'missed', 'cancelled').required(),
     outcome: Joi.string().trim().max(500).allow('', null).optional(),

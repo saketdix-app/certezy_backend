@@ -33,6 +33,7 @@ import crmRoutes from './modules/crm/crm.routes.js'
 import notificationRoutes from './modules/notifications/notifications.routes.js'
 import { admin as integrationRoutes, webhooks as webhookRoutes } from './modules/integrations/integrations.routes.js'
 import contactRoutes from './modules/contact/contact.routes.js'
+import enquiryRoutes from './modules/enquiries/enquiries.routes.js'
 import uploadRoutes from './modules/upload/upload.routes.js'
 import importRoutes from './modules/imports/imports.routes.js'
 import seoRoutes from './modules/seo/seo.routes.js'
@@ -62,6 +63,7 @@ const ROUTES = [
   ['/webhooks', webhookRoutes],
   ['/admin', adminRoutes],
   ['/contact', contactRoutes],
+  ['/enquiries', enquiryRoutes],
   ['/upload', uploadRoutes],
   ['/imports', importRoutes],
   ['/geo', geoRoutes],

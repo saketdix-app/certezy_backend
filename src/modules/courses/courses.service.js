@@ -135,6 +135,7 @@ const createCourse = async (body, createdBy) => {
     created_by: createdBy,
   })
   await queries.updateInrPricing(result.insertId, normaliseInrPricing({ ...body, ...pricing }))
+  if (body.exam_info !== undefined || body.faqs !== undefined) await queries.updatePageContent(result.insertId, body)
 
   await invalidateCourseCache()
   return getCourseById(result.insertId)
@@ -201,6 +202,15 @@ const updateCourse = async (id, body) => {
         inr_enabled: body.inr_enabled !== undefined ? body.inr_enabled : current.inr_enabled,
       })
     )
+  }
+
+  // Course page content: keep what's there unless the form sent it
+  if (body.exam_info !== undefined || body.faqs !== undefined) {
+    const currentFaqs = typeof current.faqs === 'string' ? JSON.parse(current.faqs) : current.faqs
+    await queries.updatePageContent(id, {
+      exam_info: body.exam_info !== undefined ? body.exam_info : current.exam_info,
+      faqs: body.faqs !== undefined ? body.faqs : currentFaqs,
+    })
   }
 
   await invalidateCourseCache(current.slug, finalSlug, String(id))
