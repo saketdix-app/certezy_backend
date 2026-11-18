@@ -76,7 +76,14 @@ export const ingestLead = async (source, lead) => {
       existing.id,
       'repeat_enquiry',
       null,
-      JSON.stringify({ source, platform_lead_id: lead.platform_lead_id, campaign: lead.source_meta?.campaign, course_id: lead.course_id }),
+      JSON.stringify({
+        source,
+        platform_lead_id: lead.platform_lead_id,
+        campaign: lead.source_meta?.campaign,
+        course_id: lead.course_id,
+        form: lead.source_meta?.form_name ?? lead.source_meta?.form,
+        answers: lead.source_meta?.answers,
+      }),
     ])
     await notify(existing.owner_id ? [existing.owner_id] : await managerIds(), {
       type: 'repeat_enquiry',

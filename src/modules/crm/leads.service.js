@@ -463,7 +463,10 @@ export const listLeads = async (actor, q = {}) => {
   const [rows] = await pool.query(
     `SELECT l.id, l.name, l.phone, l.email, l.source, l.stage, l.course_id, l.owner_id, l.next_follow_up_at,
             l.created_at, l.stage_changed_at, l.user_id, c.title AS course_title, u.name AS owner_name,
-            (e.id IS NOT NULL) AS enrolled
+            (e.id IS NOT NULL) AS enrolled,
+            COALESCE(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form_name')), JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form'))) AS form,
+            JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.preferred_time')) AS preferred_time,
+            LEFT(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.message')), 160) AS enquiry_message
      FROM leads l
      LEFT JOIN courses c ON c.id = l.course_id
      LEFT JOIN users u ON u.id = l.owner_id
