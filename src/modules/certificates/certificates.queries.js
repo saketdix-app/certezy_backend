@@ -38,6 +38,12 @@ const updateCertificateDates = (id, { issued_at, training_start, training_end })
   )
 
 // ── Get certificate by ID ──────────────────────────────────────────────────
+// ── Every certificate id, oldest first (for rebuilding PDFs) ────────────
+const listCertificateIds = async () => {
+  const [rows] = await pool.query('SELECT id FROM certificates ORDER BY id ASC')
+  return rows.map((r) => r.id)
+}
+
 const getCertificateById = (id) => pool.query(`SELECT * FROM certificates WHERE id = ? LIMIT 1`, [id])
 
 // ── Get certificate by user + course ──────────────────────────────────────
@@ -151,6 +157,7 @@ const deleteCertificate = (id) => pool.query('DELETE FROM certificates WHERE id 
 export {
   createCertificate,
   getCertificateById,
+  listCertificateIds,
   getCertificateByUserAndCourse,
   updatePdfUrl,
   touchIssuedAt,

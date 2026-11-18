@@ -17,7 +17,7 @@ const SITE = (process.env.SITE_URL || 'https://certezy.com').replace(/\/+$/, '')
 const BRAND = 'CERTEZY'
 // Browser tabs and search results start with the brand in capitals
 const TAB = 'CERTEZY'
-const ORG_NAME = 'CERTEZY E-Learning Pvt. Ltd.'
+const ORG_NAME = 'CERTEZY E-LEARNING PVT LTD'
 const LOGO = `${SITE}/brand/certezy-logo.png`
 const DEFAULT_DESC =
   'Online PMP® certification exam prep and IT certification training from CERTEZY: video lessons, ' +
@@ -225,20 +225,20 @@ const STATIC_PAGES = {
   '/about': {
     title: `${TAB} | About Us — Project Management Certification Training`,
     description:
-      'CERTEZY E-Learning Pvt. Ltd. (Indore, India) offers online PMP® exam prep, project management and IT certification courses with practice exams and verifiable certificates.',
+      'CERTEZY E-LEARNING PVT LTD (Indore, India) offers online PMP® exam prep, project management and IT certification courses with practice exams and verifiable certificates.',
     heading: `About ${BRAND}`,
-    text: 'CERTEZY E-Learning Pvt. Ltd. is an online learning company based in Indore, India. We help professionals prepare for certifications such as the PMP® certification with video lessons, full-length practice exams, and certificates of completion that can be verified online.',
+    text: 'CERTEZY E-LEARNING PVT LTD is an online learning company based in Indore, India. We help professionals prepare for certifications such as the PMP® certification with video lessons, full-length practice exams, and certificates of completion that can be verified online.',
   },
   '/contact-us': {
     title: `${TAB} | Contact Us — WhatsApp, Email & Office Address`,
     description:
-      'Contact CERTEZY E-Learning Pvt. Ltd.: WhatsApp support 24/7 for India and the US, email, and our office at Streamline J-1 Tower, Indore, Madhya Pradesh.',
+      'Contact CERTEZY E-LEARNING PVT LTD: WhatsApp support 24/7 for India and the US, email, and our office at Streamline J-1 Tower, Indore, Madhya Pradesh.',
     heading: 'Contact us',
-    text: 'CERTEZY E-Learning Pvt. Ltd., 3rd Floor, Streamline J-1 Tower, PU-4, Scheme No. 54, Indore, Madhya Pradesh 452010, India. Chat with us on WhatsApp 24/7 or send us a message.',
+    text: 'CERTEZY E-LEARNING PVT LTD, 3rd Floor, Streamline J-1 Tower, PU-4, Scheme No. 54, Indore, Madhya Pradesh 452010, India. Chat with us on WhatsApp 24/7 or send us a message.',
   },
   '/privacy-policy': {
     title: `${TAB} | Privacy Policy`,
-    description: 'How CERTEZY E-Learning Pvt. Ltd. collects, uses and protects your personal data.',
+    description: 'How CERTEZY E-LEARNING PVT LTD collects, uses and protects your personal data.',
     heading: 'Privacy Policy',
   },
   '/terms-of-service': {
@@ -249,7 +249,7 @@ const STATIC_PAGES = {
   '/complaints-policy': {
     title: `${TAB} | Customer Complaints & Resolution Policy`,
     description:
-      'How to raise a complaint with CERTEZY E-Learning Pvt. Ltd., our response times, review process and escalation path.',
+      'How to raise a complaint with CERTEZY E-LEARNING PVT LTD, our response times, review process and escalation path.',
     heading: 'Customer Complaints & Resolution Policy',
   },
   '/verify': {

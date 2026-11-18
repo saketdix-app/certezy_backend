@@ -1,12 +1,12 @@
 // src/modules/certificates/certificate.pdf.js
-// Draws the CERTEZY E-Learning Pvt. Ltd. certificate of completion (A4 landscape).
+// Draws the CERTEZY E-LEARNING PVT LTD certificate of completion (A4 landscape).
 // Pure rendering — returns a PDF Buffer; the service uploads it.
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import PDFDocument from 'pdfkit'
 
-export const ISSUER = 'CERTEZY E-Learning Pvt. Ltd.'
+export const ISSUER = 'CERTEZY E-LEARNING PVT LTD'
 
 const LOGO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/certezy-logo.png')
 

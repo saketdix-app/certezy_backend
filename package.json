@@ -10,7 +10,8 @@
     "test": "echo \"No tests yet\" && exit 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "seed:standard": "node scripts/import-standard.js"
+    "seed:standard": "node scripts/import-standard.js",
+    "certificates:refresh": "node scripts/refresh-certificates.js"
   },
   "keywords": [],
   "author": "",
