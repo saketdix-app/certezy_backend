@@ -22,6 +22,9 @@ export const dashboard = handle(async (req, res) => success(res, { data: await s
 export const list = handle(async (req, res) => success(res, { data: await service.listLeads(req.user, req.query) }))
 export const get = handle(async (req, res) => success(res, { data: await service.getLead(req.user, req.params.id) }))
 export const owners = handle(async (req, res) => success(res, { data: await service.assignableOwners(req.user) }))
+export const consultantProgress = handle(async (req, res) =>
+  success(res, { data: await service.consultantProgress(req.user) })
+)
 export const followUps = handle(async (req, res) =>
   success(res, { data: await service.listFollowUps(req.user, req.query) })
 )

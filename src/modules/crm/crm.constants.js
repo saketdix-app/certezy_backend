@@ -61,6 +61,10 @@ export const REASON_REQUIRED = ['not_interested', 'junk', 'on_hold']
 export const SOURCES = ['meta', 'linkedin', 'website', 'referral', 'whatsapp', 'manual', 'other']
 
 export const ACTIVITY_TYPES = ['note', 'call', 'message', 'email', 'whatsapp']
+/** Timeline entries that are a conversation with (or about) the client. */
+export const DISCUSSION_TYPES = [...ACTIVITY_TYPES, 'whatsapp_in', 'whatsapp_api', 'follow_up_done']
+/** Open = still being worked (not Course Done, not closed). */
+export const OPEN_STAGES_SQL = "l.stage NOT IN ('course_done', 'not_interested', 'junk')"
 
 export const FOLLOW_UP_TYPES = ['call', 'whatsapp', 'email', 'meeting', 'demo', 'other']
 export const FOLLOW_UP_STATUSES = ['pending', 'done', 'missed', 'cancelled']

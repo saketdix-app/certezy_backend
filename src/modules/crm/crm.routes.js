@@ -19,6 +19,8 @@ router.get('/dashboard', ...crmAll, controller.dashboard)
 router.get('/follow-ups', ...crmAll, controller.followUps)
 router.patch('/follow-ups/:id', ...crm, validate(schemas.completeFollowUp), controller.completeFollowUp)
 router.get('/owners', ...crmAll, controller.owners)
+// Admin → By consultant: leads per consultant, progress and client discussion
+router.get('/consultants/progress', ...crm, controller.consultantProgress)
 router.get('/leads', ...crmAll, controller.list)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)

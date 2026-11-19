@@ -23,7 +23,9 @@ import { getCompletionStatus } from '../certificates/certificates.service.js'
 import { autoAssign } from './distribution.service.js'
 import {
   CLOSED_STAGES,
+  DISCUSSION_TYPES,
   EXAM_STATUSES,
+  OPEN_STAGES_SQL,
   PAYMENT_TO_COURSE_DONE,
   REASON_REQUIRED,
   STAGE_LABELS,
@@ -543,6 +545,14 @@ const ORDER_BY = {
   course_done: '(l.payment_done_at IS NULL), l.payment_done_at DESC, l.stage_changed_at DESC, l.id DESC',
 }
 
+// Quoted list for SQL (fixed constants, never user input)
+const DISCUSSION_IN = DISCUSSION_TYPES.map((t) => `'${t}'`).join(', ')
+// Optional sort (By consultant view): latest / oldest client discussion first
+const SORTS = {
+  recent_discussion: '(ld.id IS NULL), ld.id DESC, l.id DESC',
+  quiet_first: '(ld.id IS NOT NULL), ld.created_at ASC, l.id DESC',
+}
+
 export const listLeads = async (actor, q = {}) => {
   assertCrmUser(actor)
   const scope = scopeFor(actor)
@@ -591,6 +601,13 @@ export const listLeads = async (actor, q = {}) => {
   if (q.paid_from) add('l.payment_done_at >= ?', day(q.paid_from))
   if (q.paid_to) add('l.payment_done_at < ?', dayEnd(q.paid_to))
   if (q.alert === '1') where.push(PAYMENT_ALERT_SQL)
+  // Client discussion: talked in the last 7 days / open and quiet for 7+ days / never
+  if (['recent', 'quiet', 'never'].includes(q.contact)) {
+    const talked = `EXISTS (SELECT 1 FROM lead_activities da WHERE da.lead_id = l.id AND da.type IN (${DISCUSSION_IN})`
+    if (q.contact === 'recent') where.push(`${talked} AND da.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY)`)
+    if (q.contact === 'quiet') where.push(`${OPEN_STAGES_SQL} AND NOT ${talked} AND da.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY)`)
+    if (q.contact === 'never') where.push(`NOT ${talked})`)
+  }
 
   // Admins: every matching lead id (for "select all N" bulk moves)
   if (q.ids_only && isManager(actor)) {
@@ -621,14 +638,19 @@ export const listLeads = async (actor, q = {}) => {
             l.payment_done_at, l.payment_reference, ${PAYMENT_ALERT_SQL} AS payment_alert,
             COALESCE(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form_name')), JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.form'))) AS form,
             JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.preferred_time')) AS preferred_time,
-            LEFT(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.message')), 160) AS enquiry_message
+            LEFT(JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.answers.message')), 160) AS enquiry_message,
+            ld.type AS last_discussion_type, LEFT(ld.body, 240) AS last_discussion,
+            ld.created_at AS last_discussion_at, ldu.name AS last_discussion_by
      FROM leads l
      LEFT JOIN courses c ON c.id = l.course_id
      LEFT JOIN users u ON u.id = l.owner_id
      LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
      LEFT JOIN enrollments e ON e.user_id = l.user_id AND e.course_id = l.course_id
+     LEFT JOIN lead_activities ld ON ld.id = (
+       SELECT MAX(a.id) FROM lead_activities a WHERE a.lead_id = l.id AND a.type IN (${DISCUSSION_IN}))
+     LEFT JOIN users ldu ON ldu.id = ld.actor_id
      WHERE ${where.join(' AND ')}
-     ORDER BY ${ORDER_BY[q.stage] ?? ORDER_BY.default}
+     ORDER BY ${SORTS[q.sort] ?? ORDER_BY[q.stage] ?? ORDER_BY.default}
      LIMIT ? OFFSET ?`,
     [...values, limit, (page - 1) * limit]
   )
@@ -951,6 +973,93 @@ export const updatePayment = async (req, id, { status, paid_at, reference }) => 
     await moveStageFor(lead, actor, lead.exam_scheduled_at || lead.exam_done ? 'exam_scheduled' : 'application', 'Payment set back to due')
   }
   return getLead(actor, lead.id)
+}
+
+/**
+ * Admin → By consultant: every consultant (and anyone else who owns leads) with
+ * their leads per stage and how actively the leads are being worked.
+ */
+export const consultantProgress = async (actor) => {
+  if (!isManager(actor)) throw fail(403, 'Only Admins see the team')
+  const { start, end } = todayBounds()
+  const [people] = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role, u.is_active,
+            (cs.on_leave_until >= CURDATE() AND (cs.on_leave_from IS NULL OR cs.on_leave_from <= CURDATE())) AS on_leave,
+            cs.on_leave_until
+     FROM users u LEFT JOIN consultant_settings cs ON cs.user_id = u.id
+     WHERE u.deleted_at IS NULL
+       AND (u.role = 'consultant' OR u.id IN (SELECT DISTINCT owner_id FROM leads WHERE archived_at IS NULL AND owner_id IS NOT NULL))
+     ORDER BY u.is_active DESC, FIELD(u.role, 'consultant') DESC, u.name`
+  )
+  const [stageRows] = await pool.query(
+    `SELECT l.owner_id, l.stage, COUNT(*) AS n FROM leads l
+     WHERE l.archived_at IS NULL AND l.owner_id IS NOT NULL GROUP BY l.owner_id, l.stage`
+  )
+  const [sumRows] = await pool.query(
+    `SELECT l.owner_id,
+            SUM(${OPEN_STAGES_SQL}) AS open,
+            SUM(${OPEN_STAGES_SQL} AND l.next_follow_up_at < ?) AS overdue,
+            SUM(${OPEN_STAGES_SQL} AND l.next_follow_up_at >= ? AND l.next_follow_up_at < ?) AS due_today,
+            SUM(${OPEN_STAGES_SQL} AND l.next_follow_up_at IS NULL) AS no_follow_up,
+            SUM(${PAYMENT_ALERT_SQL}) AS payment_alerts,
+            SUM(l.stage = 'course_done' AND l.stage_changed_at >= DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-01')) AS done_this_month,
+            SUM(${OPEN_STAGES_SQL} AND NOT EXISTS (
+              SELECT 1 FROM lead_activities a WHERE a.lead_id = l.id AND a.type IN (${DISCUSSION_IN})
+                AND a.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY)) AS quiet_7d,
+            SUM(NOT EXISTS (SELECT 1 FROM lead_activities a WHERE a.lead_id = l.id AND a.type IN (${DISCUSSION_IN}))) AS never_discussed
+     FROM leads l WHERE l.archived_at IS NULL AND l.owner_id IS NOT NULL GROUP BY l.owner_id`,
+    [start, start, end]
+  )
+  const [talkRows] = await pool.query(
+    `SELECT l.owner_id,
+            COUNT(DISTINCT CASE WHEN a.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY THEN a.lead_id END) AS discussed_7d,
+            SUM(a.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY) AS discussions_7d,
+            MAX(a.created_at) AS last_discussion_at
+     FROM lead_activities a JOIN leads l ON l.id = a.lead_id
+     WHERE l.archived_at IS NULL AND l.owner_id IS NOT NULL AND a.type IN (${DISCUSSION_IN})
+     GROUP BY l.owner_id`
+  )
+  const n = (v) => Number(v ?? 0)
+  const by = (rows) => Object.fromEntries(rows.map((r) => [r.owner_id, r]))
+  const sums = by(sumRows)
+  const talk = by(talkRows)
+  const stagesOf = {}
+  for (const r of stageRows) (stagesOf[r.owner_id] ??= Object.fromEntries(STAGES.map((s) => [s, 0])))[r.stage] = n(r.n)
+
+  const consultants = people.map((p) => {
+    const stages = stagesOf[p.id] ?? Object.fromEntries(STAGES.map((s) => [s, 0]))
+    const total = Object.values(stages).reduce((a, b) => a + b, 0)
+    const s = sums[p.id] ?? {}
+    const t = talk[p.id] ?? {}
+    return {
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      role: p.role,
+      is_active: Boolean(p.is_active),
+      on_leave: Boolean(p.on_leave),
+      on_leave_until: p.on_leave_until,
+      total,
+      stages,
+      open: n(s.open),
+      overdue: n(s.overdue),
+      due_today: n(s.due_today),
+      no_follow_up: n(s.no_follow_up),
+      payment_alerts: n(s.payment_alerts),
+      done_this_month: n(s.done_this_month),
+      quiet_7d: n(s.quiet_7d),
+      never_discussed: n(s.never_discussed),
+      discussed_7d: n(t.discussed_7d),
+      discussions_7d: n(t.discussions_7d),
+      last_discussion_at: t.last_discussion_at ?? null,
+      conversion: total ? Math.round((stages.course_done / total) * 1000) / 10 : 0,
+    }
+  })
+  // Leads nobody owns, so they don't slip through
+  const [[{ unassigned }]] = await pool.query(
+    'SELECT COUNT(*) AS unassigned FROM leads WHERE archived_at IS NULL AND owner_id IS NULL'
+  )
+  return { consultants, unassigned: n(unassigned) }
 }
 
 /** People a lead can be assigned to (Admin create form). */
