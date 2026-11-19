@@ -18,7 +18,7 @@ const crmAll = [authenticate, role('admin', 'consultant', 'exam_coordinator')]
 router.get('/dashboard', ...crmAll, controller.dashboard)
 router.get('/follow-ups', ...crmAll, controller.followUps)
 router.patch('/follow-ups/:id', ...crm, validate(schemas.completeFollowUp), controller.completeFollowUp)
-router.get('/owners', ...crm, controller.owners)
+router.get('/owners', ...crmAll, controller.owners)
 router.get('/leads', ...crmAll, controller.list)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)

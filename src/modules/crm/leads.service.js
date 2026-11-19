@@ -955,6 +955,13 @@ export const updatePayment = async (req, id, { status, paid_at, reference }) => 
 
 /** People a lead can be assigned to (Admin create form). */
 export const assignableOwners = async (actor) => {
+  // Coordinators get the consultants' names, for the "Consultant" filter on their students
+  if (isCoordinator(actor)) {
+    const [rows] = await pool.query(
+      "SELECT u.id, u.name, u.role FROM users u WHERE u.role = 'consultant' AND u.is_active = 1 AND u.deleted_at IS NULL ORDER BY u.name"
+    )
+    return rows
+  }
   if (!isManager(actor)) throw fail(403, 'Only Admins assign leads')
   const [rows] = await pool.query(
     `SELECT u.id, u.name, u.role, cs.accepting_leads,
