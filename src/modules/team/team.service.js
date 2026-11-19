@@ -37,7 +37,7 @@ const fail = (statusCode, message) => Object.assign(new Error(message), { status
 
 const getUser = async (id) => {
   const [[row]] = await pool.query(
-    `SELECT id, name, email, password, role, is_active, deleted_at FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, name, email, mobile, password, role, is_active, deleted_at FROM users WHERE id = ? LIMIT 1`,
     [id]
   )
   return row ?? null
@@ -402,6 +402,77 @@ export const resendInvite = async (req, id) => {
   })
   await audit(req, { action: 'user.invite_resend', targetType: 'user', targetId: target.id })
   return { sent: true }
+}
+
+// ── Edit name, email, mobile ──────────────────────────────────────────────
+
+/**
+ * Edit a team member's details. Allowed for anyone who manages them (and for
+ * yourself). The email is how they sign in, so changing it:
+ *   • must not clash with another account (deleted ones included),
+ *   • needs your own password for Admins, Super Admins and your own account,
+ *   • tells both the old and the new address.
+ */
+export const updateMember = async (req, id, { name, email, mobile, password }) => {
+  const actor = req.user
+  const target = await getUser(id)
+  if (!target || target.deleted_at || !STAFF_ROLES.includes(target.role)) throw fail(404, 'Team member not found')
+  const self = Number(target.id) === Number(actor.id)
+  if (!self && !canManage(actor, target)) throw await denied(req, 'user.update', target, "You can't edit this account")
+
+  const changes = {}
+  if (name !== undefined && String(name).trim() !== target.name) changes.name = String(name).trim()
+  const newEmail = email === undefined ? null : String(email).trim().toLowerCase()
+  if (newEmail && newEmail !== String(target.email).toLowerCase()) changes.email = newEmail
+  const newMobile = mobile === undefined ? undefined : String(mobile ?? '').trim() || null
+  if (newMobile !== undefined && newMobile !== (target.mobile || null)) changes.mobile = newMobile
+  if (!Object.keys(changes).length) return getMember(target.id)
+
+  if (changes.email) {
+    const [[clash]] = await pool.query('SELECT id, deleted_at FROM users WHERE LOWER(email) = ? AND id <> ? LIMIT 1', [
+      changes.email,
+      target.id,
+    ])
+    if (clash) {
+      throw fail(
+        409,
+        clash.deleted_at
+          ? 'This email belongs to a deleted account — erase or restore it from Users first'
+          : 'Another account already uses this email'
+      )
+    }
+    if (self || target.role === SUPER || target.role === 'admin') await reauthenticate(actor, password)
+  }
+
+  const cols = Object.keys(changes)
+  await pool.query(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, [
+    ...cols.map((c) => changes[c]),
+    target.id,
+  ])
+  await audit(req, {
+    action: 'user.update',
+    targetType: 'user',
+    targetId: target.id,
+    details: Object.fromEntries(cols.map((c) => [c, { from: target[c] ?? null, to: changes[c] }])),
+  })
+
+  if (changes.email) {
+    const displayName = changes.name ?? target.name
+    const lines = [
+      `Sign-in email changed from ${target.email} to ${changes.email}`,
+      `Changed by: ${actor.name} (${ROLE_LABELS[actor.role] ?? actor.role})`,
+      'If you did not expect this, contact your Super Admin straight away.',
+    ]
+    for (const to of [target.email, changes.email]) {
+      await sendSecurityNoticeJob({ to, name: displayName, title: 'Your CERTEZY sign-in email was changed', lines }).catch(
+        (err) => console.error('Security notice email failed:', err.message)
+      )
+    }
+    if (target.role === SUPER) {
+      await notifySuperAdmins('A Super Admin sign-in email was changed', [`${displayName}: ${lines[0]}`, lines[1]], actor.id)
+    }
+  }
+  return getMember(target.id)
 }
 
 // ── Change role (promote / demote) ────────────────────────────────────────
