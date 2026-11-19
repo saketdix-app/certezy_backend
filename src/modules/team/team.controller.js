@@ -62,6 +62,9 @@ export const resendInvite = handle(async (req, res) =>
 )
 
 // PATCH /admin/team/:id/role
+export const update = handle(async (req, res) =>
+  success(res, { message: 'Details updated', data: await service.updateMember(req, req.params.id, req.body) })
+)
 export const changeRole = handle(async (req, res) =>
   success(res, { message: 'Role updated', data: await service.changeRole(req, req.params.id, req.body) })
 )

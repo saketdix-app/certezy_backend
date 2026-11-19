@@ -339,6 +339,12 @@ const schemas = {
     password: reauthPassword,
   }),
   setTeamStatus: Joi.object({ is_active: Joi.boolean().required() }),
+  updateTeamMember: Joi.object({
+    name: Joi.string().trim().min(2).max(100).optional(),
+    email: Joi.string().trim().email().max(150).lowercase().optional(),
+    mobile: Joi.string().trim().max(20).allow('', null).optional(),
+    password: reauthPassword, // your own password, when changing a sign-in email that needs it
+  }).or('name', 'email', 'mobile'),
   // ── 2.0 CRM (leads) ──
   createLead: Joi.object({
     name: Joi.string().trim().min(2).max(150).required(),
