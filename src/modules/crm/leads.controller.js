@@ -41,6 +41,12 @@ export const examCoordinators = handle(async (req, res) =>
 export const setExamCoordinator = handle(async (req, res) =>
   success(res, { message: 'Exam coordinator updated', data: await service.setExamCoordinator(req, req.params.id, req.body) })
 )
+export const updateApplication = handle(async (req, res) =>
+  success(res, { message: 'Application updated', data: await service.updateApplication(req, req.params.id, req.body) })
+)
+export const updatePayment = handle(async (req, res) =>
+  success(res, { message: 'Payment updated', data: await service.updatePayment(req, req.params.id, req.body) })
+)
 export const updateExam = handle(async (req, res) =>
   success(res, { message: 'Exam updated', data: await service.updateExam(req, req.params.id, req.body) })
 )

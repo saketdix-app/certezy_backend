@@ -376,15 +376,29 @@ const schemas = {
     // required by the service when moving to Application
     ticket_size: Joi.number().positive().max(100000000).precision(2).optional(),
     ticket_currency: Joi.string().valid(...TICKET_CURRENCIES).optional(),
+    // required when moving to Exam Scheduled (unless a date is already set)
+    exam_scheduled_at: Joi.date().iso().optional(),
+  }),
+  leadApplication: Joi.object({
+    submitted: Joi.boolean().required(),
+    submitted_at: Joi.date().iso().max('now').allow(null).optional()
+      .messages({ 'date.max': "The submission date can't be in the future" }),
+  }),
+  leadPayment: Joi.object({
+    status: Joi.string().valid('due', 'done').required(),
+    paid_at: Joi.date().iso().max('now').allow(null).optional()
+      .messages({ 'date.max': "The payment date can't be in the future" }),
+    reference: Joi.string().trim().max(255).allow('', null).optional(),
   }),
   leadExamCoordinator: Joi.object({
     exam_coordinator_id: Joi.number().integer().positive().allow(null).required(),
   }),
   leadExam: Joi.object({
-    status: Joi.string().valid('not_scheduled', 'scheduled', 'completed').required(),
+    status: Joi.string().valid('not_scheduled', 'scheduled', 'rescheduled', 'cancelled').required(),
     scheduled_at: Joi.date().iso().allow(null).optional(),
+    exam_done: Joi.boolean().optional(),
     completed_at: Joi.date().iso().max('now').allow(null).optional()
-      .messages({ 'date.max': "The exam completion date can't be in the future" }),
+      .messages({ 'date.max': "The exam date can't be in the future once it's done" }),
     result: Joi.string().valid('passed', 'failed').allow(null).optional(),
     note: Joi.string().trim().max(255).allow('', null).optional(),
   }),

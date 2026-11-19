@@ -18,7 +18,7 @@ const crmAll = [authenticate, role('admin', 'consultant', 'exam_coordinator')]
 router.get('/dashboard', ...crmAll, controller.dashboard)
 router.get('/follow-ups', ...crmAll, controller.followUps)
 router.patch('/follow-ups/:id', ...crm, validate(schemas.completeFollowUp), controller.completeFollowUp)
-router.get('/owners', ...crm, controller.owners)
+router.get('/owners', ...crmAll, controller.owners)
 router.get('/leads', ...crmAll, controller.list)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)
@@ -33,6 +33,9 @@ router.post('/leads/:id/follow-ups', ...crm, validate(schemas.scheduleFollowUp),
 router.get('/exam-coordinators', ...crm, controller.examCoordinators)
 router.put('/leads/:id/exam-coordinator', ...crm, validate(schemas.leadExamCoordinator), controller.setExamCoordinator)
 router.put('/leads/:id/exam', ...crmAll, validate(schemas.leadExam), controller.updateExam)
+// Application Submitted (consultant / Admin); Payment Due ↔ Done (anyone with access → Course Done)
+router.put('/leads/:id/application', ...crm, validate(schemas.leadApplication), controller.updateApplication)
+router.put('/leads/:id/payment', ...crmAll, validate(schemas.leadPayment), controller.updatePayment)
 
 // CRM → LMS actions from a lead (permission + ownership checked in the service)
 router.post('/leads/:id/student-account', ...crm, controller.studentAccount)

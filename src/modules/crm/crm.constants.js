@@ -8,6 +8,7 @@ export const STAGES = [
   'in_conversation',
   'on_hold',
   'application',
+  'exam_scheduled',
   'course_done',
   'not_interested',
   'junk',
@@ -19,19 +20,23 @@ export const STAGE_LABELS = {
   in_conversation: 'In Conversation',
   on_hold: 'On Hold',
   application: 'Application',
+  exam_scheduled: 'Exam Scheduled',
   course_done: 'Course Done',
   not_interested: 'Not Interested',
   junk: 'Junk Lead',
 }
 
 // Allowed next stages (PRD §4.2). Closed stages reopen only with a reason,
-// by an Admin or Super Admin.
+// by an Admin or Super Admin. Course Done is never chosen by hand: the lead
+// moves there automatically when its Payment Status is set to Payment Done.
+// Scheduling the exam moves an Application lead to Exam Scheduled.
 export const TRANSITIONS = {
   new: ['attempting_contact', 'junk'],
   attempting_contact: ['in_conversation', 'on_hold', 'not_interested', 'junk'],
   in_conversation: ['on_hold', 'application', 'not_interested'],
-  on_hold: ['attempting_contact', 'in_conversation', 'not_interested'],
-  application: ['course_done', 'on_hold', 'not_interested'],
+  on_hold: ['attempting_contact', 'in_conversation', 'application', 'not_interested'],
+  application: ['exam_scheduled', 'on_hold', 'not_interested'],
+  exam_scheduled: ['application', 'on_hold', 'not_interested'],
   course_done: [],
   not_interested: ['attempting_contact', 'in_conversation'], // reopen
   junk: ['new', 'attempting_contact'], // reopen
@@ -42,9 +47,14 @@ export const CLOSED_STAGES = ['not_interested', 'junk']
 // Ticket size (expected deal value) recorded when a lead moves to Application
 export const TICKET_CURRENCIES = ['INR', 'USD']
 
-// Exam progress on a lead, worked by its Exam Coordinator (or anyone with access)
-export const EXAM_STATUSES = ['not_scheduled', 'scheduled', 'completed']
+// Exam on a lead, worked by its Exam Coordinator (or anyone with access).
+// exam_status is the schedule; whether the exam was taken is exam_done (yes/no).
+export const EXAM_STATUSES = ['not_scheduled', 'scheduled', 'rescheduled', 'cancelled']
 export const EXAM_RESULTS = ['passed', 'failed']
+// Payment Due (default) → Payment Done, which moves the lead to Course Done
+export const PAYMENT_STATUSES = ['due', 'done']
+// Stages where marking Payment Done moves the lead to Course Done
+export const PAYMENT_TO_COURSE_DONE = ['application', 'exam_scheduled', 'on_hold', 'in_conversation']
 // Stages that need a recorded reason to enter
 export const REASON_REQUIRED = ['not_interested', 'junk', 'on_hold']
 

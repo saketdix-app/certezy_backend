@@ -59,6 +59,12 @@ export const attributeSale = async (paymentId) => {
       lead.owner_id ?? null,
       payment.id,
     ])
+    // The lead's Payment Status: paid online
+    await pool.query(
+      `UPDATE leads SET payment_status = 'done', payment_done_at = COALESCE(payment_done_at, UTC_TIMESTAMP()),
+         payment_reference = COALESCE(payment_reference, ?) WHERE id = ? AND payment_status = 'due'`,
+      [`Online payment #${payment.id}`, lead.id]
+    )
     await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, meta) VALUES (?, NULL, ?, ?)', [
       lead.id,
       'sale',
