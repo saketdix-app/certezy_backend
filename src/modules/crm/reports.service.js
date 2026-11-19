@@ -17,7 +17,7 @@ import { pool } from '../../config/db.js'
 import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { STAGES } from './crm.constants.js'
-import { TICKET_EARNED_SQL } from './leads.service.js'
+import { PAYMENT_ALERT_SQL, TICKET_EARNED_SQL } from './leads.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const assertManager = (actor) => {
@@ -229,27 +229,34 @@ const buildOverview = async (actor, q = {}) => {
   // ── Exams (by date the exam was scheduled for / completed) ──
   const [[examTotals]] = await pool.query(
     `SELECT
-       SUM(l.exam_status = 'scheduled') AS scheduled_now,
-       SUM(l.exam_status = 'scheduled' AND l.exam_scheduled_at < UTC_TIMESTAMP()) AS scheduled_overdue,
-       SUM(l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
+       SUM(l.exam_status IN ('scheduled', 'rescheduled') AND l.exam_done = 0 AND l.stage = 'exam_scheduled') AS scheduled_now,
+       SUM(l.exam_status IN ('scheduled', 'rescheduled') AND l.exam_done = 0 AND l.exam_scheduled_at < UTC_TIMESTAMP()
+           AND l.stage = 'exam_scheduled') AS scheduled_overdue,
+       SUM(l.exam_status = 'cancelled' AND l.stage = 'exam_scheduled') AS cancelled_now,
+       SUM(l.exam_done = 1 AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
        SUM(l.exam_result = 'passed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS passed,
        SUM(l.exam_result = 'failed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS failed,
-       SUM(l.exam_status = 'completed' AND l.stage <> 'course_done') AS awaiting_course_done,
-       SUM(l.exam_coordinator_id IS NULL AND l.stage = 'application') AS applications_without_coordinator
+       SUM(${PAYMENT_ALERT_SQL}) AS payment_alerts,
+       SUM(l.payment_status = 'done' AND l.payment_done_at >= ? AND l.payment_done_at < ?) AS payments_done,
+       SUM(l.stage = 'application' AND l.application_submitted = 1) AS applications_submitted,
+       SUM(l.stage = 'application' AND l.application_submitted = 0) AS applications_not_submitted,
+       SUM(l.exam_coordinator_id IS NULL AND l.stage IN ('application', 'exam_scheduled')) AS applications_without_coordinator
      FROM leads l WHERE l.archived_at IS NULL`,
-    [start, end, start, end, start, end]
+    [start, end, start, end, start, end, start, end]
   )
   const [examSeries] = await pool.query(
     `SELECT ${periodExpr('l.exam_completed_at', group, offset)} AS period, COUNT(*) AS completed
-     FROM leads l WHERE l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ? AND l.archived_at IS NULL
+     FROM leads l WHERE l.exam_done = 1 AND l.exam_completed_at >= ? AND l.exam_completed_at < ? AND l.archived_at IS NULL
      GROUP BY period ORDER BY period`,
     [start, end]
   )
   const [coordinatorRows] = await pool.query(
     `SELECT u.id, u.name, u.is_active,
             SUM(l.id IS NOT NULL) AS assigned,
-            SUM(l.exam_status = 'scheduled') AS scheduled,
-            SUM(l.exam_status = 'completed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
+            SUM(l.stage = 'application') AS applications,
+            SUM(l.exam_status IN ('scheduled', 'rescheduled') AND l.exam_done = 0 AND l.stage = 'exam_scheduled') AS scheduled,
+            SUM(l.exam_done = 1 AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS completed,
+            SUM(${PAYMENT_ALERT_SQL}) AS payment_alerts,
             SUM(l.exam_result = 'passed' AND l.exam_completed_at >= ? AND l.exam_completed_at < ?) AS passed,
             SUM(l.stage = 'course_done') AS course_done
      FROM users u
@@ -333,7 +340,9 @@ const buildOverview = async (actor, q = {}) => {
         name: r.name,
         active: Boolean(r.is_active),
         assigned: n(r.assigned),
+        applications: n(r.applications),
         scheduled: n(r.scheduled),
+        payment_alerts: n(r.payment_alerts),
         completed: n(r.completed),
         passed: n(r.passed),
         course_done: n(r.course_done),
@@ -374,7 +383,8 @@ export const exportLeads = async (req, q = {}) => {
             JSON_UNQUOTE(JSON_EXTRACT(l.source_meta, '$.campaign')) AS campaign, c.title AS course, l.stage,
             l.disposition_reason, u.name AS owner, l.first_contact_at, l.next_follow_up_at,
             l.ticket_size, l.ticket_currency, ec.name AS exam_coordinator, l.exam_status, l.exam_scheduled_at,
-            l.exam_completed_at, l.exam_result,
+            l.exam_completed_at, l.exam_result, l.application_submitted, l.application_submitted_at,
+            l.exam_done, l.payment_status, l.payment_done_at, l.payment_reference,
             (SELECT COUNT(*) FROM payments p WHERE p.lead_id = l.id AND p.status = 'success') AS sales
      FROM leads l LEFT JOIN courses c ON c.id = l.course_id LEFT JOIN users u ON u.id = l.owner_id
      LEFT JOIN users ec ON ec.id = l.exam_coordinator_id
@@ -400,9 +410,15 @@ export const exportLeads = async (req, q = {}) => {
     ['ticket_size', 'Ticket size'],
     ['ticket_currency', 'Ticket currency'],
     ['exam_coordinator', 'Exam coordinator'],
+    ['application_submitted', 'Application submitted (1 = yes)'],
+    ['application_submitted_at', 'Application submitted on'],
     ['exam_status', 'Exam status'],
     ['exam_scheduled_at', 'Exam date (UTC)'],
-    ['exam_completed_at', 'Exam completed (UTC)'],
+    ['exam_done', 'Exam done (1 = yes)'],
+    ['exam_completed_at', 'Exam done on (UTC)'],
     ['exam_result', 'Exam result'],
+    ['payment_status', 'Payment status'],
+    ['payment_done_at', 'Payment done (UTC)'],
+    ['payment_reference', 'Payment reference'],
   ])
 }

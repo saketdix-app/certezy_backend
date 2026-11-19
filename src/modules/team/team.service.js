@@ -138,7 +138,7 @@ export const listTeam = async ({ role, status, search }) => {
             (SELECT COUNT(*) FROM leads l WHERE l.owner_id = u.id AND l.archived_at IS NULL
                AND l.stage NOT IN ('course_done', 'not_interested', 'junk')) AS open_leads,
             (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = u.id AND l.archived_at IS NULL
-               AND l.exam_status <> 'completed') AS open_exams
+               AND l.stage NOT IN ('course_done', 'not_interested', 'junk')) AS open_exams
      FROM users u
      LEFT JOIN admin_permissions p ON p.user_id = u.id
      LEFT JOIN consultant_settings cs ON cs.user_id = u.id

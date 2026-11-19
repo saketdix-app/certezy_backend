@@ -438,7 +438,7 @@ export const handoverSummary = async (actor, userId) => {
     `SELECT
        (SELECT COUNT(*) FROM leads l WHERE l.owner_id = ? AND l.archived_at IS NULL AND ${OPEN_FOR_HANDOVER}) AS open_leads,
        (SELECT COUNT(*) FROM leads l WHERE l.owner_id = ? AND l.archived_at IS NULL) AS all_leads,
-       (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.exam_status <> 'completed') AS open_exams`,
+       (SELECT COUNT(*) FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.stage NOT IN ('course_done', 'not_interested', 'junk')) AS open_exams`,
     [u.id, u.id, u.id]
   )
   return {
@@ -509,7 +509,7 @@ export const handoverFrom = async (req, userId, { owner_mode = 'keep', owner_id,
       to = c.id
     }
     const [rows] = await pool.query(
-      `SELECT l.id, l.name FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.exam_status <> 'completed'`,
+      `SELECT l.id, l.name FROM leads l WHERE l.exam_coordinator_id = ? AND l.archived_at IS NULL AND l.stage NOT IN ('course_done', 'not_interested', 'junk')`,
       [from.id]
     )
     for (const l of rows) {

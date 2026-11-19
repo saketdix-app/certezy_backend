@@ -33,6 +33,9 @@ router.post('/leads/:id/follow-ups', ...crm, validate(schemas.scheduleFollowUp),
 router.get('/exam-coordinators', ...crm, controller.examCoordinators)
 router.put('/leads/:id/exam-coordinator', ...crm, validate(schemas.leadExamCoordinator), controller.setExamCoordinator)
 router.put('/leads/:id/exam', ...crmAll, validate(schemas.leadExam), controller.updateExam)
+// Application Submitted (consultant / Admin); Payment Due ↔ Done (anyone with access → Course Done)
+router.put('/leads/:id/application', ...crm, validate(schemas.leadApplication), controller.updateApplication)
+router.put('/leads/:id/payment', ...crmAll, validate(schemas.leadPayment), controller.updatePayment)
 
 // CRM → LMS actions from a lead (permission + ownership checked in the service)
 router.post('/leads/:id/student-account', ...crm, controller.studentAccount)

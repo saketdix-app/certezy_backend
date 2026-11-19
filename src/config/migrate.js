@@ -726,6 +726,39 @@ const STEPS = [
     run: () => addColumnIfMissing('consultant_settings', 'on_leave_from', 'DATE NULL'),
   },
   {
+    name: 'leads: application submitted, exam done, payment status (+ move existing data)',
+    run: async () => {
+      const added = [
+        await addColumnIfMissing('leads', 'application_submitted', 'TINYINT(1) NOT NULL DEFAULT 0'),
+        await addColumnIfMissing('leads', 'application_submitted_at', 'DATE NULL'),
+        await addColumnIfMissing('leads', 'exam_done', 'TINYINT(1) NOT NULL DEFAULT 0'),
+        await addColumnIfMissing('leads', 'payment_status', "VARCHAR(10) NOT NULL DEFAULT 'due'"),
+        await addColumnIfMissing('leads', 'payment_done_at', 'DATETIME NULL'),
+        await addColumnIfMissing('leads', 'payment_reference', 'VARCHAR(255) NULL'),
+        await addColumnIfMissing('leads', 'payment_marked_by', 'INT NULL'),
+      ]
+      if (added[2]) {
+        // Old "completed" exams → Exam Done = Yes (the schedule status stays "scheduled")
+        await pool.query("UPDATE leads SET exam_done = 1, exam_status = 'scheduled' WHERE exam_status = 'completed'")
+        // Applications whose exam is already scheduled or done → the new Exam Scheduled stage
+        await pool.query(
+          "UPDATE leads SET stage = 'exam_scheduled' WHERE stage = 'application' AND (exam_status = 'scheduled' OR exam_done = 1)"
+        )
+        await pool.query('CREATE INDEX idx_leads_payment ON leads (payment_status, exam_done)')
+      }
+      if (added[3]) {
+        // Leads that already paid online
+        await pool.query(
+          `UPDATE leads l
+           JOIN (SELECT lead_id, MIN(created_at) AS paid_at FROM payments WHERE status = 'success' AND lead_id IS NOT NULL GROUP BY lead_id) p
+             ON p.lead_id = l.id
+           SET l.payment_status = 'done', l.payment_done_at = p.paid_at, l.payment_reference = 'Online payment'`
+        )
+      }
+      return added.some(Boolean)
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false
