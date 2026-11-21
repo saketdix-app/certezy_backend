@@ -854,71 +854,139 @@ const otherSide = (lead, actor) => [lead.owner_id, lead.exam_coordinator_id].fil
  * Cancelled, with date and time) and Exam Done (yes/no). Scheduling the exam
  * moves an Application lead to Exam Scheduled.
  */
-export const updateExam = async (req, id, { status, scheduled_at, exam_done, completed_at, result, note }) => {
+/**
+ * Schedule, move or cancel the exam (Exam Coordinator, the lead's consultant or an Admin).
+ *   • Scheduling an Application lead moves it to Exam Scheduled.
+ *   • Changing the date of a scheduled exam is a reschedule (old date kept in the timeline).
+ *   • Cancelling needs a remark, keeps the scheduled date on record and moves an
+ *     Exam Scheduled lead back to Application.
+ *   • "Exam done" is not set by hand: it turns on by itself once the exam time has
+ *     passed (markExamsTaken), which raises the payment-due alert.
+ */
+export const updateExam = async (req, id, { status, scheduled_at, note }) => {
   const actor = req.user
   const lead = await loadVisibleLead(actor, id)
   if (!EXAM_STATUSES.includes(status)) throw fail(400, 'Unknown exam status')
   if (['course_done', ...CLOSED_STAGES].includes(lead.stage) && !isManager(actor)) {
     throw fail(409, `This lead is in ${STAGE_LABELS[lead.stage]}; ask an Admin to change the exam`)
   }
-  const done = exam_done === undefined ? Boolean(lead.exam_done) : Boolean(exam_done)
-  if (done && status === 'cancelled') throw fail(400, "A cancelled exam can't be marked as done")
-  const next = {
-    status,
-    scheduled_at: lead.exam_scheduled_at ? toSqlDate(lead.exam_scheduled_at) : null,
-    done,
-    completed_at: done ? toSqlDate(completed_at || lead.exam_completed_at || new Date()) : null,
-    result: done ? (result !== undefined ? result : lead.exam_result) ?? null : null,
-    note: note !== undefined ? note?.trim() || null : lead.exam_note,
-  }
-  if (['scheduled', 'rescheduled'].includes(status)) {
-    if (!scheduled_at && !lead.exam_scheduled_at) throw fail(400, 'Choose the exam date and time')
-    if (scheduled_at) next.scheduled_at = toSqlDate(scheduled_at)
-  }
-  if (status === 'not_scheduled') next.scheduled_at = null
+  const remark = note?.trim() || null
+  const prevAt = lead.exam_scheduled_at ? toSqlDate(lead.exam_scheduled_at) : null
+  const wasLive = ['scheduled', 'rescheduled'].includes(lead.exam_status)
 
+  // ── Cancel ──
+  if (status === 'cancelled') {
+    if (!remark) throw fail(400, 'Add a remark: why was the exam cancelled?')
+    if (lead.exam_status === 'cancelled') throw fail(409, 'This exam is already cancelled')
+    await pool.query(
+      `UPDATE leads SET exam_status = 'cancelled', exam_done = 0, exam_completed_at = NULL, exam_result = NULL, exam_note = ?
+       WHERE id = ?`,
+      [remark, lead.id]
+    )
+    await addActivity(lead.id, actor.id, 'exam_cancelled', remark, {
+      status,
+      ...(prevAt && { scheduled_at: sqlToIso(prevAt) }), // the date it was booked for, kept on record
+    })
+    await audit(req, { action: 'lead.exam_cancelled', targetType: 'lead', targetId: lead.id, details: { scheduled_at: prevAt, remark } })
+    const backToApplication = lead.stage === 'exam_scheduled'
+    if (backToApplication) await moveStageFor(lead, actor, 'application', `Exam cancelled: ${remark}`)
+    const others = otherSide(lead, actor)
+    if (others.length) {
+      await notify(others, {
+        type: 'exam_schedule',
+        title: `${lead.name}: exam cancelled${backToApplication ? ' — back to Application' : ''}`,
+        body: `${prevAt ? `Was on ${new Date(sqlToIso(prevAt)).toUTCString().slice(0, 22)} UTC. ` : ''}Remark: ${remark}`,
+        link: `/consultant/leads?lead=${lead.id}`,
+      })
+    }
+    return getLead(actor, lead.id)
+  }
+
+  // ── Clear (no exam) ──
+  if (status === 'not_scheduled') {
+    await pool.query(
+      `UPDATE leads SET exam_status = 'not_scheduled', exam_scheduled_at = NULL, exam_done = 0, exam_completed_at = NULL,
+              exam_result = NULL, exam_note = ? WHERE id = ?`,
+      [remark, lead.id]
+    )
+    await addActivity(lead.id, actor.id, 'exam_cleared', remark, { status, ...(prevAt && { previous_at: sqlToIso(prevAt) }) })
+    await audit(req, { action: 'lead.exam_cleared', targetType: 'lead', targetId: lead.id })
+    return getLead(actor, lead.id)
+  }
+
+  // ── Schedule / move the date ──
+  const at = scheduled_at ? toSqlDate(scheduled_at) : prevAt
+  if (!at) throw fail(400, 'Choose the exam date and time')
+  const moved = Boolean(wasLive && prevAt && at !== prevAt)
+  // A new date on a live exam is a reschedule; booking again after a cancel is a fresh schedule
+  const nextStatus = moved || (lead.exam_status === 'rescheduled' && wasLive) ? 'rescheduled' : 'scheduled'
+  // A date in the future means the exam hasn't been taken yet
+  const future = new Date(sqlToIso(at)).getTime() > Date.now()
+  const done = future ? false : Boolean(lead.exam_done) && !moved
   await pool.query(
-    `UPDATE leads SET exam_status = ?, exam_scheduled_at = ?, exam_done = ?, exam_completed_at = ?, exam_result = ?, exam_note = ?
+    `UPDATE leads SET exam_status = ?, exam_scheduled_at = ?, exam_done = ?, exam_completed_at = ?, exam_note = ?
      WHERE id = ?`,
-    [next.status, next.scheduled_at, next.done ? 1 : 0, next.completed_at, next.result, next.note, lead.id]
+    [nextStatus, at, done ? 1 : 0, done ? toSqlDate(lead.exam_completed_at || sqlToIso(at)) : null, remark ?? lead.exam_note ?? null, lead.id]
   )
-  const becameDone = next.done && !lead.exam_done
-  const type = becameDone
-    ? 'exam_completed'
-    : { scheduled: 'exam_scheduled', rescheduled: 'exam_rescheduled', cancelled: 'exam_cancelled', not_scheduled: 'exam_cleared' }[status]
-  await addActivity(lead.id, actor.id, type, next.note !== lead.exam_note ? next.note : null, {
-    status,
-    ...(next.scheduled_at && { scheduled_at: sqlToIso(next.scheduled_at) }),
-    ...(next.done && { exam_done: true }),
-    ...(next.completed_at && { completed_at: sqlToIso(next.completed_at) }),
-    ...(next.result && { result: next.result }),
-  })
-  await audit(req, { action: `lead.${type}`, targetType: 'lead', targetId: lead.id, details: { status, exam_done: next.done, result: next.result } })
+  const type = moved ? 'exam_rescheduled' : 'exam_scheduled'
+  if (moved || !wasLive || remark !== (lead.exam_note || null)) {
+    await addActivity(lead.id, actor.id, type, remark, {
+      status: nextStatus,
+      scheduled_at: sqlToIso(at),
+      ...(moved && { previous_at: sqlToIso(prevAt) }),
+    })
+  }
+  await audit(req, { action: `lead.${type}`, targetType: 'lead', targetId: lead.id, details: { from: prevAt, to: at } })
 
   // Application → Exam Scheduled once the exam has a date
-  if (lead.stage === 'application' && ['scheduled', 'rescheduled'].includes(status)) {
-    await moveStageFor(lead, actor, 'exam_scheduled', 'Exam scheduled')
-  }
+  if (lead.stage === 'application') await moveStageFor(lead, actor, 'exam_scheduled', 'Exam scheduled')
 
   const others = otherSide(lead, actor)
-  if (becameDone) {
-    const unpaid = lead.payment_status !== 'done'
-    const message = {
-      type: unpaid ? 'payment_due' : 'exam_completed',
-      title: `${lead.name} completed the exam${next.result ? ` (${next.result})` : ''}${unpaid ? ' — payment due' : ''}`,
-      body: unpaid ? 'Exam done but payment is still due' : 'Exam done and payment received',
-    }
-    if (others.length) await notify(others, { ...message, link: `/consultant/leads?lead=${lead.id}` })
-    else if (!lead.owner_id) await notify(await managerIds(), { ...message, link: `/admin/leads?lead=${lead.id}` })
-  } else if (['scheduled', 'rescheduled', 'cancelled'].includes(status) && others.length) {
+  if (others.length && (moved || !wasLive)) {
     await notify(others, {
       type: 'exam_schedule',
-      title: `${lead.name}: exam ${status}`,
-      body: next.scheduled_at && status !== 'cancelled' ? `On ${new Date(sqlToIso(next.scheduled_at)).toUTCString().slice(0, 22)} UTC` : null,
+      title: `${lead.name}: exam ${moved ? 'rescheduled' : 'scheduled'}`,
+      body: `On ${new Date(sqlToIso(at)).toUTCString().slice(0, 22)} UTC${moved ? ` (was ${new Date(sqlToIso(prevAt)).toUTCString().slice(0, 22)} UTC)` : ''}`,
       link: `/consultant/leads?lead=${lead.id}`,
     })
   }
   return getLead(actor, lead.id)
+}
+
+/**
+ * Exams whose date and time have passed count as done (no Yes/No to click).
+ * Runs every 5 minutes from the CRM scheduler; tells the consultant and the
+ * coordinator, with "payment due" when the payment isn't in yet.
+ */
+export const markExamsTaken = async () => {
+  const [rows] = await pool.query(
+    `SELECT l.id, l.name, l.owner_id, l.exam_coordinator_id, l.exam_scheduled_at, l.payment_status
+     FROM leads l
+     WHERE l.exam_done = 0 AND l.exam_status IN ('scheduled', 'rescheduled') AND l.exam_scheduled_at <= UTC_TIMESTAMP()
+       AND l.archived_at IS NULL AND l.stage NOT IN ('not_interested', 'junk')
+     LIMIT 500`
+  )
+  let marked = 0
+  for (const l of rows) {
+    const [claim] = await pool.query(
+      `UPDATE leads SET exam_done = 1, exam_completed_at = exam_scheduled_at
+       WHERE id = ? AND exam_done = 0 AND exam_status IN ('scheduled', 'rescheduled') AND exam_scheduled_at <= UTC_TIMESTAMP()`,
+      [l.id]
+    )
+    if (!claim.affectedRows) continue
+    marked++
+    await addActivity(l.id, null, 'exam_completed', null, { automatic: true, completed_at: sqlToIso(toSqlDate(l.exam_scheduled_at)) })
+    const unpaid = l.payment_status !== 'done'
+    const to = [l.owner_id, l.exam_coordinator_id].filter(Boolean)
+    const message = {
+      type: unpaid ? 'payment_due' : 'exam_completed',
+      title: `${l.name}: exam done${unpaid ? ' — payment due' : ''}`,
+      body: unpaid ? 'The exam time has passed and the payment is still due' : 'The exam time has passed; payment already received',
+    }
+    if (to.length) await notify(to, { ...message, link: `/consultant/leads?lead=${l.id}` })
+    else await notify(await managerIds(), { ...message, link: `/admin/leads?lead=${l.id}` })
+  }
+  return marked
 }
 
 /** Consultant (owner) or Admin: Application Submitted yes/no and its date. */
@@ -970,7 +1038,7 @@ export const updatePayment = async (req, id, { status, paid_at, reference }) => 
     }
   }
   if (!done && lead.stage === 'course_done') {
-    await moveStageFor(lead, actor, lead.exam_scheduled_at || lead.exam_done ? 'exam_scheduled' : 'application', 'Payment set back to due')
+    await moveStageFor(lead, actor, ['scheduled', 'rescheduled'].includes(lead.exam_status) ? 'exam_scheduled' : 'application', 'Payment set back to due')
   }
   return getLead(actor, lead.id)
 }

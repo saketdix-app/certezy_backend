@@ -406,6 +406,7 @@ const schemas = {
     completed_at: Joi.date().iso().max('now').allow(null).optional()
       .messages({ 'date.max': "The exam date can't be in the future once it's done" }),
     result: Joi.string().valid('passed', 'failed').allow(null).optional(),
+    // Remark — required when cancelling (the service says so)
     note: Joi.string().trim().max(255).allow('', null).optional(),
   }),
   leadActivity: Joi.object({

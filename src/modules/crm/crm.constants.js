@@ -48,7 +48,7 @@ export const CLOSED_STAGES = ['not_interested', 'junk']
 export const TICKET_CURRENCIES = ['INR', 'USD']
 
 // Exam on a lead, worked by its Exam Coordinator (or anyone with access).
-// exam_status is the schedule; whether the exam was taken is exam_done (yes/no).
+// exam_status is the schedule; exam_done turns on by itself once the exam time has passed.
 export const EXAM_STATUSES = ['not_scheduled', 'scheduled', 'rescheduled', 'cancelled']
 export const EXAM_RESULTS = ['passed', 'failed']
 // Payment Due (default) → Payment Done, which moves the lead to Course Done
