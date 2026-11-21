@@ -759,6 +759,58 @@ const STEPS = [
     },
   },
   {
+    name: 'live_batches + batch_enrollments (live batches with enrollment → CRM lead)',
+    run: async () => {
+      if (await tableExists('live_batches')) return false
+      await pool.query(`
+        CREATE TABLE live_batches (
+          id            INT AUTO_INCREMENT PRIMARY KEY,
+          title         VARCHAR(160) NOT NULL,
+          course_id     INT NULL,
+          trainer_name  VARCHAR(120) NULL,
+          trainer_title VARCHAR(160) NULL,
+          start_date    DATE NOT NULL,
+          end_date      DATE NULL,
+          schedule      VARCHAR(160) NULL,
+          timezone      VARCHAR(40) NULL,
+          mode          ENUM('online','classroom','hybrid') NOT NULL DEFAULT 'online',
+          location      VARCHAR(160) NULL,
+          seats         INT NULL,
+          price         DECIMAL(12,2) NULL,
+          currency      ENUM('INR','USD') NOT NULL DEFAULT 'INR',
+          description   TEXT NULL,
+          status        ENUM('draft','published','closed','cancelled') NOT NULL DEFAULT 'draft',
+          created_by    INT NULL,
+          created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_lb_public (status, start_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS batch_enrollments (
+          id               INT AUTO_INCREMENT PRIMARY KEY,
+          batch_id         INT NOT NULL,
+          name             VARCHAR(150) NOT NULL,
+          email            VARCHAR(150) NOT NULL,
+          phone            VARCHAR(30) NOT NULL,
+          phone_norm       VARCHAR(10) NULL,
+          company          VARCHAR(150) NULL,
+          experience_years TINYINT NULL,
+          message          TEXT NULL,
+          lead_id          INT NULL,
+          ingest_event_id  INT NULL,
+          ip               VARCHAR(64) NULL,
+          user_agent       VARCHAR(200) NULL,
+          created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_be_batch (batch_id, id),
+          INDEX idx_be_lead (lead_id),
+          CONSTRAINT fk_be_batch FOREIGN KEY (batch_id) REFERENCES live_batches(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false
