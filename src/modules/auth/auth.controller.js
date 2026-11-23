@@ -186,11 +186,16 @@ const updateProfile = async (req, res, next) => {
 const oauthCallback = async (req, res, next) => {
   try {
     const result = await service.oauthLogin(req.user)
+    // Two-step sign-in: back to the login page to enter the emailed code (no session yet)
+    if (result.two_factor_required) {
+      const q = new URLSearchParams({ two_step: result.challenge, hint: result.email_hint })
+      return res.redirect(`${env.frontendUrl}/login?${q}`)
+    }
     setCookies(res, result)
     return res.redirect(`${env.frontendUrl}/oauth/callback`)
   } catch (err) {
     if (err.statusCode === 403) return res.redirect(`${env.frontendUrl}/login?error=account_deleted`)
-    if (err.publicCode === 'TWO_FACTOR_REQUIRED') return res.redirect(`${env.frontendUrl}/login?error=two_factor`)
+    if (err.statusCode === 502) return res.redirect(`${env.frontendUrl}/login?error=code_email`)
     next(err)
   }
 }
