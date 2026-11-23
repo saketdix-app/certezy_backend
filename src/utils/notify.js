@@ -4,6 +4,23 @@
 
 import { pool } from '../config/db.js'
 import { sendPush } from './push.js'
+import env from '../config/env.js'
+
+// Also emailed (new leads matter even when nobody has the CRM open)
+const EMAIL_TYPES = new Set(['lead_assigned'])
+
+const emailAbout = async (ids, { title, body, link }) => {
+  const [rows] = await pool.query(
+    'SELECT id, name, email FROM users WHERE id IN (?) AND is_active = 1 AND deleted_at IS NULL',
+    [ids]
+  )
+  if (!rows.length) return
+  // Loaded only when needed (the queue opens a Redis connection)
+  const { sendLeadAssignedJob } = await import('../jobs/emailQueue.js')
+  for (const u of rows) {
+    await sendLeadAssignedJob({ to: u.email, name: u.name, title, body, url: link ? `${env.frontendUrl}${link}` : `${env.frontendUrl}/login` })
+  }
+}
 
 export const notify = async (userIds, { type, title, body = null, link = null }) => {
   const ids = [...new Set([].concat(userIds).filter(Boolean))]
@@ -18,6 +35,7 @@ export const notify = async (userIds, { type, title, body = null, link = null })
   }
   // …and to their phones (CERTEZY Team app), without holding up the action
   sendPush(ids, { type, title, body, link }).catch(() => {})
+  if (EMAIL_TYPES.has(type)) emailAbout(ids, { title, body, link }).catch((err) => console.error('Lead email failed:', err.message))
 }
 
 /** Active Admins and Super Admins (for "needs attention" alerts). */

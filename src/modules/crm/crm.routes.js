@@ -23,6 +23,16 @@ router.get('/owners', ...crmAll, controller.owners)
 // Admin → By consultant: leads per consultant, progress and client discussion
 router.get('/consultants/progress', ...crm, controller.consultantProgress)
 router.get('/leads', ...crmAll, controller.list)
+// My leads I haven't opened since they were assigned (red dot on the tab / menu)
+router.get('/leads/new-count', ...crmAll, controller.newCount)
+// Saved WhatsApp / email messages
+router.get('/templates', ...crmAll, controller.templatesList)
+router.post('/templates', ...crmAll, validate(schemas.messageTemplate), controller.templatesCreate)
+router.put('/templates/:id', ...crmAll, validate(schemas.messageTemplate), controller.templatesUpdate)
+router.delete('/templates/:id', ...crmAll, controller.templatesDelete)
+// CERTEZY Team app: latest APK (for "Check for updates"); Admins publish it
+router.get('/app-release', ...crmAll, controller.appReleaseGet)
+router.put('/app-release', ...crm, validate(schemas.appRelease), controller.appReleaseSave)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)
 router.post('/leads/assign', ...crm, validate(schemas.moveLeads), controller.move)

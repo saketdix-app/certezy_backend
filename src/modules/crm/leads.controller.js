@@ -1,6 +1,8 @@
 // src/modules/crm/leads.controller.js
 
 import * as service from './leads.service.js'
+import * as templates from './templates.service.js'
+import * as appRelease from './appRelease.service.js'
 import { importLeads } from './leadImport.service.js'
 import * as distribution from './distribution.service.js'
 import * as actions from './actions.service.js'
@@ -24,6 +26,21 @@ export const importCsv = handle(async (req, res) => {
   const data = await importLeads(req, req.body)
   return success(res, { message: data.dry_run ? 'File checked' : `${data.created} leads imported`, data })
 })
+export const newCount = handle(async (req, res) => success(res, { data: await service.newLeadsCount(req.user) }))
+export const templatesList = handle(async (req, res) => success(res, { data: await templates.listTemplates(req.user) }))
+export const templatesCreate = handle(async (req, res) =>
+  success(res, { message: 'Template saved', statusCode: 201, data: await templates.createTemplate(req.user, req.body) })
+)
+export const templatesUpdate = handle(async (req, res) =>
+  success(res, { message: 'Template saved', data: await templates.updateTemplate(req.user, req.params.id, req.body) })
+)
+export const templatesDelete = handle(async (req, res) =>
+  success(res, { message: 'Template deleted', data: await templates.deleteTemplate(req.user, req.params.id) })
+)
+export const appReleaseGet = handle(async (req, res) => success(res, { data: await appRelease.getRelease() }))
+export const appReleaseSave = handle(async (req, res) =>
+  success(res, { message: 'App update published', data: await appRelease.saveRelease(req, req.body) })
+)
 export const remove = handle(async (req, res) => {
   const data = await service.deleteLeads(req, req.body)
   return success(res, { message: data.deleted === 1 ? 'Lead deleted' : `${data.deleted} leads deleted`, data })
