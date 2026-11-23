@@ -15,15 +15,16 @@ import { audit } from '../../utils/audit.js'
 import { notify } from '../../utils/notify.js'
 import { canAssignLeads, isCrmManager } from '../../utils/access.js'
 import { SOURCES, STAGE_LABELS } from './crm.constants.js'
-import { findDuplicates, findStudentId, normalizeEmail, normalizePhone } from './leads.service.js'
+import { normalizeEmail, normalizePhone } from './leads.service.js'
 import { autoAssign } from './distribution.service.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
-export const MAX_ROWS = 2000
+export const MAX_ROWS = 10000
 const PREVIEW_ROWS = 50
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // Stages an import may set (later stages need a ticket size, exam date or payment)
-const IMPORTABLE_STAGES = ['new', 'attempting_contact', 'in_conversation', 'on_hold', 'not_interested', 'junk']
+const IMPORTABLE_STAGES = ['backlog', 'new', 'attempting_contact', 'in_conversation', 'on_hold', 'not_interested', 'junk']
+const CHUNK = 1000 // rows per batched lookup / insert
 
 /** "Phone Number" → "phonenumber" */
 const norm = (h) => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -225,6 +226,57 @@ const buildRow = (cells, columns, ctx) => {
 
 const OWNER_MODES = ['me', 'unassigned', 'owner', 'round_robin', 'column']
 
+const chunks = (list, n = CHUNK) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n))
+
+/**
+ * Existing leads matching the file's phones, emails and platform ids, in a few
+ * batched queries (not one per row — files can have 10,000 leads).
+ */
+const existingLeads = async (rows) => {
+  const phones = new Set()
+  const emails = new Set()
+  const pids = new Set()
+  for (const r of rows) {
+    const p = normalizePhone(r.lead.phone)
+    const e = normalizeEmail(r.lead.email)
+    if (p) phones.add(p)
+    if (e) emails.add(e)
+    if (r.lead.platform_lead_id) pids.add(String(r.lead.platform_lead_id))
+  }
+  const byPhone = new Map()
+  const byEmail = new Map()
+  const byPid = new Map()
+  const run = async (column, values, into, key) => {
+    for (const part of chunks([...values])) {
+      const [found] = await pool.query(
+        `SELECT l.id, l.name, l.owner_id, l.phone_norm, l.email_norm, l.source, l.platform_lead_id
+         FROM leads l WHERE l.archived_at IS NULL AND l.${column} IN (?)`,
+        [part]
+      )
+      for (const f of found) if (!into.has(key(f))) into.set(key(f), f)
+    }
+  }
+  await run('phone_norm', phones, byPhone, (f) => f.phone_norm)
+  await run('email_norm', emails, byEmail, (f) => f.email_norm)
+  await run('platform_lead_id', pids, byPid, (f) => `${f.source}|${f.platform_lead_id}`)
+  return (lead) =>
+    byPhone.get(normalizePhone(lead.phone)) ??
+    byEmail.get(normalizeEmail(lead.email)) ??
+    (lead.platform_lead_id ? byPid.get(`${lead.source}|${lead.platform_lead_id}`) : undefined) ??
+    null
+}
+
+/** Student accounts for the file's emails (link the lead to its student). */
+const studentIds = async (rows) => {
+  const emails = [...new Set(rows.map((r) => normalizeEmail(r.lead.email)).filter(Boolean))]
+  const map = new Map()
+  for (const part of chunks(emails)) {
+    const [found] = await pool.query('SELECT id, LOWER(email) AS e FROM users WHERE LOWER(email) IN (?) AND deleted_at IS NULL', [part])
+    for (const f of found) if (!map.has(f.e)) map.set(f.e, f.id)
+  }
+  return map
+}
+
 /**
  * Check (dry_run) or import a CSV of leads.
  * body: { csv, dry_run, default_source, course_id, owner_mode, owner_id }
@@ -270,12 +322,15 @@ export const importLeads = async (req, body) => {
   }
 
   // Check every row: errors, then duplicates (in the CRM, then earlier in this file)
+  const built = data.map((cells, i) => ({ row: i + 2, ...buildRow(cells, columns, ctx) }))
+  // Backlog: the whole upload waits in the consultant's Backlog tab
+  if (body.as_backlog) for (const r of built) if (!r.errors.length) r.lead.stage = 'backlog'
+  const findExisting = await existingLeads(built.filter((r) => !r.errors.length))
   const seenPhones = new Set()
   const seenEmails = new Set()
   const rows = []
-  for (const [i, cells] of data.entries()) {
-    const r = buildRow(cells, columns, ctx)
-    const out = { row: i + 2, ...r }
+  for (const r of built) {
+    const out = r
     if (r.errors.length) out.status = 'error'
     else {
       const p = normalizePhone(r.lead.phone)
@@ -284,10 +339,9 @@ export const importLeads = async (req, body) => {
         out.status = 'duplicate'
         out.issues = [...r.issues, 'Same person appears earlier in this file']
       } else {
-        const dups = await findDuplicates({ phone: r.lead.phone, email: r.lead.email, source: r.lead.source, platform_lead_id: r.lead.platform_lead_id })
-        if (dups.length) {
+        const d = findExisting(r.lead)
+        if (d) {
           out.status = 'duplicate'
-          const d = dups[0]
           out.issues = [...r.issues, manager || d.owner_id === actor.id ? `Already a lead: ${d.name} (#${d.id})` : 'Already a lead (another consultant)']
         } else out.status = 'ready'
       }
@@ -304,6 +358,7 @@ export const importLeads = async (req, body) => {
     duplicates: count('duplicate'),
     errors: count('error'),
     owner_mode: ownerMode,
+    as_backlog: Boolean(body.as_backlog),
   }
   const view = (r) => ({
     row: r.row,
@@ -325,52 +380,67 @@ export const importLeads = async (req, body) => {
   }
 
   // ── Import ──
+  // One transaction (fast for thousands of rows); activities in batched inserts
+  const ready = rows.filter((x) => x.status === 'ready')
+  const students = await studentIds(ready)
   const created = []
   const perOwner = new Map()
+  const activities = []
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    for (const r of ready) {
+      const l = r.lead
+      const ownerId = ownerMode === 'me' ? actor.id : ownerMode === 'owner' ? fixedOwner.id : ownerMode === 'column' ? l.owner?.id ?? null : null
+      // Backlog leads aren't "new" for the red dot: the consultant picks them up when they have time
+      const seen = ownerId && l.stage === 'backlog'
+      const [res] = await conn.query(
+        `INSERT INTO leads (name, phone, phone_norm, email, email_norm, course_id, preferred_schedule, source,
+           source_meta, platform_lead_id, consent, owner_id, assigned_by, assigned_at, owner_seen_at, stage, stage_changed_at,
+           user_id, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ${ownerId ? 'UTC_TIMESTAMP()' : 'NULL'}, ${seen ? 'UTC_TIMESTAMP()' : 'NULL'}, ?, UTC_TIMESTAMP(), ?, ?)`,
+        [
+          l.name,
+          l.phone,
+          normalizePhone(l.phone),
+          l.email,
+          normalizeEmail(l.email),
+          l.course_id,
+          l.preferred_schedule,
+          l.source,
+          JSON.stringify(l.source_meta),
+          l.platform_lead_id,
+          ownerId,
+          ownerId ? actor.id : null,
+          l.stage,
+          students.get(normalizeEmail(l.email)) ?? null,
+          actor.id,
+        ]
+      )
+      const id = res.insertId
+      created.push(id)
+      activities.push([id, actor.id, 'created', null, JSON.stringify({ source: l.source, import: true, ...(l.stage === 'backlog' && { backlog: true }) })])
+      if (ownerId) {
+        activities.push([id, actor.id, 'assignment', null, JSON.stringify({ to: ownerId, how: 'import' })])
+        if (ownerId !== actor.id) perOwner.set(ownerId, (perOwner.get(ownerId) ?? 0) + 1)
+      }
+      if (l.notes) activities.push([id, actor.id, 'note', l.notes, JSON.stringify({ from: 'import' })])
+    }
+    for (const part of chunks(activities)) {
+      await conn.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES ?', [part])
+    }
+    await conn.commit()
+  } catch (err) {
+    await conn.rollback()
+    throw err
+  } finally {
+    conn.release()
+  }
+
+  // Round Robin after the import is saved (each lead goes through the usual rules)
   let roundRobinAssigned = 0
-  for (const r of rows.filter((x) => x.status === 'ready')) {
-    const l = r.lead
-    const ownerId = ownerMode === 'me' ? actor.id : ownerMode === 'owner' ? fixedOwner.id : ownerMode === 'column' ? l.owner?.id ?? null : null
-    const [res] = await pool.query(
-      `INSERT INTO leads (name, phone, phone_norm, email, email_norm, course_id, preferred_schedule, source,
-         source_meta, platform_lead_id, consent, owner_id, assigned_by, assigned_at, stage, stage_changed_at,
-         user_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ${ownerId ? 'UTC_TIMESTAMP()' : 'NULL'}, ?, UTC_TIMESTAMP(), ?, ?)`,
-      [
-        l.name,
-        l.phone,
-        normalizePhone(l.phone),
-        l.email,
-        normalizeEmail(l.email),
-        l.course_id,
-        l.preferred_schedule,
-        l.source,
-        JSON.stringify(l.source_meta),
-        l.platform_lead_id,
-        ownerId,
-        ownerId ? actor.id : null,
-        l.stage,
-        await findStudentId(l.email),
-        actor.id,
-      ]
-    )
-    const id = res.insertId
-    created.push(id)
-    await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
-      id, actor.id, 'created', null, JSON.stringify({ source: l.source, import: true }),
-    ])
-    if (ownerId) {
-      await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
-        id, actor.id, 'assignment', null, JSON.stringify({ to: ownerId, how: 'import' }),
-      ])
-      if (ownerId !== actor.id) perOwner.set(ownerId, (perOwner.get(ownerId) ?? 0) + 1)
-    }
-    if (l.notes) {
-      await pool.query('INSERT INTO lead_activities (lead_id, actor_id, type, body, meta) VALUES (?, ?, ?, ?, ?)', [
-        id, actor.id, 'note', l.notes, JSON.stringify({ from: 'import' }),
-      ])
-    }
-    if (ownerMode === 'round_robin') {
+  if (ownerMode === 'round_robin') {
+    for (const id of created) {
       const a = await autoAssign(id, { req }).catch(() => ({}))
       if (a?.assigned_to) roundRobinAssigned++
     }
@@ -380,8 +450,12 @@ export const importLeads = async (req, body) => {
   for (const [ownerId, n] of perOwner) {
     await notify(ownerId, {
       type: 'lead_assigned',
-      title: n === 1 ? 'A lead was assigned to you from an import' : `${n} leads were assigned to you from an import`,
-      body: `Imported by ${actor.name ?? 'an admin'}`,
+      title: body.as_backlog
+        ? `${n} lead${n === 1 ? '' : 's'} added to your Backlog`
+        : n === 1
+          ? 'A lead was assigned to you from an import'
+          : `${n} leads were assigned to you from an import`,
+      body: body.as_backlog ? `Imported by ${actor.name ?? 'an admin'} — move them to Attempting Contact when you have time` : `Imported by ${actor.name ?? 'an admin'}`,
       link: '/consultant/leads',
     })
   }
@@ -395,6 +469,7 @@ export const importLeads = async (req, body) => {
       errors: summary.errors,
       owner_mode: ownerMode,
       owner_id: fixedOwner?.id,
+      as_backlog: Boolean(body.as_backlog),
     },
   })
   return {
