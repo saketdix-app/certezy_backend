@@ -60,7 +60,7 @@ const signGuestToken = (userId, paymentId) =>
 const readGuestToken = async (token, paymentId) => {
   let claims
   try {
-    claims = jwt.verify(String(token ?? ''), secret())
+    claims = jwt.verify(String(token ?? ''), secret(), { algorithms: ['HS256'] })
   } catch {
     throw AppError.forbidden('This checkout session has expired — please start the payment again')
   }

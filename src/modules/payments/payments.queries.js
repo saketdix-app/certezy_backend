@@ -22,6 +22,10 @@ const createPayment = ({ user_id, course_id, amount, original_amount, currency, 
 // ── Get payment by ID ──────────────────────────────────────────────────────
 const getPaymentById = (id) => pool.query(`SELECT * FROM payments WHERE id = ? LIMIT 1`, [id])
 
+// ── Gateway order id (Razorpay order / PayPal order) the payment was created with ──
+const setGatewayOrderId = (id, gatewayOrderId) =>
+  pool.query('UPDATE payments SET gateway_order_id = ? WHERE id = ?', [gatewayOrderId, id])
+
 // ── Get payment by gateway_txn_id (idempotency check) ─────────────────────
 const getPaymentByTxnId = (gateway_txn_id) =>
   pool.query(`SELECT * FROM payments WHERE gateway_txn_id = ? LIMIT 1`, [gateway_txn_id])
@@ -131,4 +135,5 @@ export {
   getAllPayments,
   countPayments,
   getRevenueStats,
+  setGatewayOrderId,
 }

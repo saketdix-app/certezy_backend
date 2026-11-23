@@ -11,7 +11,8 @@ const router = Router()
 
 // ─── PUBLIC ──────────────────────────────────────────────────
 router.get('/course/:course_id', controller.getTestsByCourseId)
-router.get('/:id/full', controller.getTestFull)
+// The full question list is staff-only (students get questions via /attempts/start)
+router.get('/:id/full', authenticate, role('admin', 'sub_admin'), permission('can_manage_tests'), controller.getTestFull)
 router.get('/:id', controller.getTestById)
 
 // ─── ADMIN / SUB-ADMIN ONLY ───────────────────────────────────
