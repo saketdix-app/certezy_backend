@@ -216,6 +216,15 @@ export const createLead = async (req, body) => {
   const id = result.insertId
   await addActivity(id, actor.id, 'created', null, { source: body.source || 'manual' })
   if (ownerId) await addActivity(id, actor.id, 'assignment', null, { to: ownerId, how: 'on_create' })
+  // An Admin adding a lead for someone else: tell them (in-app + phone)
+  if (ownerId && ownerId !== actor.id) {
+    await notify(ownerId, {
+      type: 'lead_assigned',
+      title: 'New lead assigned to you',
+      body: `${String(body.name).trim()}${body.phone ? ` · ${body.phone}` : ''}`,
+      link: `/consultant/leads?lead=${id}`,
+    })
+  }
   await audit(req, { action: 'lead.create', targetType: 'lead', targetId: id, details: { source: body.source || 'manual', owner_id: ownerId } })
   // Admin chose "Auto (Round Robin)": distribute now (stays in the queue if no one can take it)
   if (!ownerId && isManager(actor) && body.auto_assign) await autoAssign(id, { req })

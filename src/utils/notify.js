@@ -3,6 +3,7 @@
 // Never throws — a failed notification must not undo the action behind it.
 
 import { pool } from '../config/db.js'
+import { sendPush } from './push.js'
 
 export const notify = async (userIds, { type, title, body = null, link = null }) => {
   const ids = [...new Set([].concat(userIds).filter(Boolean))]
@@ -15,6 +16,8 @@ export const notify = async (userIds, { type, title, body = null, link = null })
   } catch (err) {
     console.error(`Notification failed (${type}):`, err.message)
   }
+  // …and to their phones (CERTEZY Team app), without holding up the action
+  sendPush(ids, { type, title, body, link }).catch(() => {})
 }
 
 /** Active Admins and Super Admins (for "needs attention" alerts). */
