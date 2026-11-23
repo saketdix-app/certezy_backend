@@ -912,6 +912,14 @@ const STEPS = [
     },
   },
   {
+    name: 'payments.gateway_order_id (a gateway receipt can only confirm its own payment)',
+    run: async () => {
+      const added = await addColumnIfMissing('payments', 'gateway_order_id', 'VARCHAR(100) NULL')
+      if (added) await pool.query('CREATE INDEX idx_pay_gw_order ON payments (gateway_order_id)')
+      return added
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

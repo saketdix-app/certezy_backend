@@ -22,6 +22,11 @@ passport.use(
         if (!email) {
           return done(null, false, { message: 'Google account mein email nahi mila' })
         }
+        // Only an email Google has verified may sign in to (or link to) a CERTEZY account
+        const verified = profile._json?.email_verified ?? profile.emails?.[0]?.verified
+        if (verified === false || verified === 'false') {
+          return done(null, false, { message: 'Verify this email with Google first' })
+        }
 
         const user = await findOrCreateOAuthUser({
           provider: 'google',
@@ -50,11 +55,13 @@ passport.use(
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const email = profile.emails?.[0]?.value
+        // GitHub lets anyone add an unverified email: use only the primary,
+        // verified one (else someone could add a staff member's email and sign in as them)
+        const email = await verifiedGitHubEmail(accessToken)
         const avatar = profile.photos?.[0]?.value
 
         if (!email) {
-          return done(null, false, { message: 'GitHub account mein email nahi mila — email public karo' })
+          return done(null, false, { message: 'Your GitHub account needs a verified primary email' })
         }
 
         const user = await findOrCreateOAuthUser({
@@ -73,7 +80,23 @@ passport.use(
   )
 )
 
-// ─── HELPER ──────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────
+
+/** The GitHub account's primary email, only if GitHub has verified it. */
+const verifiedGitHubEmail = async (accessToken) => {
+  try {
+    const res = await fetch('https://api.github.com/user/emails', {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json', 'User-Agent': 'certezy' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const list = await res.json()
+    const primary = Array.isArray(list) ? list.find((e) => e.primary && e.verified) : null
+    return primary?.email ?? null
+  } catch {
+    return null
+  }
+}
 const findOrCreateOAuthUser = async ({ provider, providerId, name, email, avatar }) => {
   const conn = await pool.getConnection() // ✅ db → pool
 

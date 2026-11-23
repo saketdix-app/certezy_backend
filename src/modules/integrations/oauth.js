@@ -78,7 +78,7 @@ const signState = (req, source, scopes = 'full') =>
 
 const readState = (req, source, state) => {
   try {
-    const s = jwt.verify(String(state ?? ''), stateSecret())
+    const s = jwt.verify(String(state ?? ''), stateSecret(), { algorithms: ['HS256'] })
     if (s.uid === req.user.id && s.source === source) return s
   } catch {
     /* fall through */

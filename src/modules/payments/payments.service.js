@@ -177,6 +177,33 @@ const assertOwnPendingPayment = (payment, user_id) => {
   if (payment.user_id !== user_id) throw AppError.forbidden('This payment does not belong to you')
 }
 
+const mismatch = (what) => {
+  console.error(`SECURITY: payment confirmation refused — ${what}`)
+  return AppError.badRequest('Payment verification failed — this payment does not match your order')
+}
+
+/**
+ * A gateway receipt confirms only the payment it was created for, for the
+ * exact amount we asked. Without this, a valid receipt for a cheap order could
+ * be replayed against a pending order for an expensive course.
+ */
+const assertRazorpayMatches = async (payment, razorpayOrderId, razorpayPaymentId) => {
+  if (payment.gateway_order_id) {
+    if (payment.gateway_order_id !== razorpayOrderId) throw mismatch(`order ${razorpayOrderId} is not payment ${payment.id}'s`)
+  }
+  // Ask Razorpay what was actually paid (also covers payments created before order ids were stored)
+  const rp = await getRazorpay().payments.fetch(razorpayPaymentId)
+  const expectedPaise = Math.round(Number(payment.amount) * 100)
+  if (rp?.order_id !== razorpayOrderId) throw mismatch('payment / order pair differs at Razorpay')
+  if (String(rp?.notes?.payment_id ?? '') !== String(payment.id) && !payment.gateway_order_id) {
+    throw mismatch(`Razorpay order belongs to payment ${rp?.notes?.payment_id}`)
+  }
+  if (Number(rp?.amount) !== expectedPaise || String(rp?.currency).toUpperCase() !== 'INR') {
+    throw mismatch(`amount ${rp?.amount} ${rp?.currency} ≠ ${expectedPaise} INR`)
+  }
+  if (!['captured', 'authorized'].includes(rp?.status)) throw mismatch(`Razorpay status ${rp?.status}`)
+}
+
 // Constant-time compare for HMAC signatures
 const safeEqual = (a, b) => {
   const ba = Buffer.from(String(a))
@@ -318,6 +345,8 @@ const razorpayCreateOrder = async (user_id, body, region) => {
     console.error('Razorpay create order failed:', detail)
     throw new AppError(`Razorpay could not start the payment: ${detail}`, 502)
   }
+  // Only this Razorpay order can confirm this payment (see razorpayVerify)
+  await queries.setGatewayOrderId(result.insertId, order.id)
 
   return {
     payment_id: result.insertId,
@@ -350,6 +379,7 @@ const razorpayVerify = async (
   const payment = await getPaymentById(payment_id)
   assertOwnPendingPayment(payment, user.id)
   if (payment.status === 'success') return { already_processed: true }
+  await assertRazorpayMatches(payment, razorpay_order_id, razorpay_payment_id)
   const [courseRows] = await courseQueries.getCourseById(payment.course_id)
 
   const { invoice_url } = await handlePaymentSuccess({
@@ -379,6 +409,8 @@ const paypalCreateOrder = async (user_id, body, region) => {
           {
             amount: { currencyCode: 'USD', value: Number(amount).toFixed(2) },
             description: course.title.slice(0, 127),
+            // Our reference, checked again at capture
+            customId: `course-${course.id}-user-${user_id}`,
           },
         ],
         // Where PayPal sends the payer after approving / cancelling. Without a
@@ -414,6 +446,8 @@ const paypalCreateOrder = async (user_id, body, region) => {
     method: 'paypal',
     discount_link_id: body.discount_link_id ?? null,
   })
+  // Only this PayPal order can confirm this payment (see paypalCapture)
+  await queries.setGatewayOrderId(result.insertId, order.id)
 
   return {
     payment_id: result.insertId,
@@ -428,13 +462,30 @@ const paypalCapture = async (user, { payment_id, paypal_order_id }) => {
   const [existing] = await queries.getPaymentByTxnId(paypal_order_id)
   if (existing.length) return { already_processed: true }
 
-  assertOwnPendingPayment(await getPaymentById(payment_id), user.id)
+  const pending = await getPaymentById(payment_id)
+  assertOwnPendingPayment(pending, user.id)
+  if (pending.status === 'success') return { already_processed: true }
+  // This PayPal order must be the one created for this payment
+  if (pending.gateway_order_id && pending.gateway_order_id !== paypal_order_id) {
+    throw mismatch(`PayPal order ${paypal_order_id} is not payment ${pending.id}'s`)
+  }
+  if (!pending.gateway_order_id) {
+    // Created before order ids were stored: check the order's amount / reference at PayPal first
+    const { result: o } = await getPaypalOrders().getOrder({ id: paypal_order_id })
+    const unit = o?.purchaseUnits?.[0]
+    if (
+      unit?.customId !== `course-${pending.course_id}-user-${pending.user_id}` &&
+      !(Number(unit?.amount?.value) === Number(pending.amount) && unit?.amount?.currencyCode === 'USD')
+    ) {
+      throw mismatch(`PayPal order ${paypal_order_id} does not match payment ${pending.id}`)
+    }
+  }
 
   let captureData
   try {
     const { result } = await getPaypalOrders().captureOrder({
       id: paypal_order_id,
-      prefer: 'return=minimal',
+      prefer: 'return=representation',
     })
     captureData = result
   } catch (err) {
@@ -453,6 +504,11 @@ const paypalCapture = async (user, { payment_id, paypal_order_id }) => {
     const err = new Error('PayPal payment not completed')
     err.statusCode = 400
     throw err
+  }
+  // What PayPal actually captured must be what we charge for this course
+  const captured = captureData.purchaseUnits?.[0]?.payments?.captures?.[0]?.amount
+  if (captured && (Number(captured.value) !== Number(pending.amount) || captured.currencyCode !== 'USD')) {
+    throw mismatch(`PayPal captured ${captured.value} ${captured.currencyCode} ≠ ${pending.amount} USD`)
   }
 
   const payment = await getPaymentById(payment_id)
@@ -492,6 +548,15 @@ const razorpayWebhook = async (rawBody, signature) => {
 
     const payment = await getPaymentById(payment_id)
     if (payment.status === 'success') return { already_processed: true }
+    const entity = payload.payload.payment.entity
+    if (payment.gateway_order_id && entity.order_id !== payment.gateway_order_id) {
+      console.error(`SECURITY: webhook order ${entity.order_id} is not payment ${payment.id}'s`)
+      return { skipped: true }
+    }
+    if (Number(entity.amount) !== Math.round(Number(payment.amount) * 100) || String(entity.currency).toUpperCase() !== 'INR') {
+      console.error(`SECURITY: webhook amount ${entity.amount} ${entity.currency} ≠ payment ${payment.id}`)
+      return { skipped: true }
+    }
     const [courseRows] = await courseQueries.getCourseById(payment.course_id)
 
     await handlePaymentSuccess({

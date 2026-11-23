@@ -192,4 +192,17 @@ const env = {
   corsOrigins: [...new Set([frontendUrl, ...toList(process.env.CORS_ORIGINS)])],
 }
 
+// Weak signing secrets let anyone forge a sign-in. Warn loudly on a live server.
+if (isProd) {
+  const weak = [
+    ['JWT_SECRET', env.jwt.secret],
+    ['REFRESH_TOKEN_SECRET', env.jwt.refreshSecret],
+  ].filter(([, v]) => String(v ?? '').length < 32)
+  if (env.jwt.secret && env.jwt.secret === env.jwt.refreshSecret) weak.push(['JWT_SECRET = REFRESH_TOKEN_SECRET', ''])
+  if (env.razorpay.keyId && !env.razorpay.webhookSecret) weak.push(['RAZORPAY_WEBHOOK_SECRET (missing)', ''])
+  if (weak.length) {
+    console.warn(`\nSECURITY WARNING — set long random values (openssl rand -hex 48) for: ${weak.map(([k]) => k).join(', ')}\n`)
+  }
+}
+
 export default env

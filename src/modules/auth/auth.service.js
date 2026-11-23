@@ -200,6 +200,12 @@ const oauthLogin = async (user) => {
     err.statusCode = 403
     throw err
   }
+  // Blocked accounts can't sign in with Google / GitHub either
+  if (user.is_active === 0 || user.is_active === false) {
+    const err = new Error('Account is deactivated. Contact admin.')
+    err.statusCode = 403
+    throw err
+  }
   // Two-step sign-in on: Google / GitHub proves who it is, then the emailed code
   // is still needed — no session until it's entered (same as email + password)
   const [[tf]] = await pool.query('SELECT id, name, email, two_factor_enabled FROM users WHERE id = ? LIMIT 1', [user.id])
