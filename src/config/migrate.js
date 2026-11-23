@@ -811,6 +811,26 @@ const STEPS = [
     },
   },
   {
+    name: 'user_push_tokens (CERTEZY Team app push notifications)',
+    run: async () => {
+      if (await tableExists('user_push_tokens')) return false
+      await pool.query(`
+        CREATE TABLE user_push_tokens (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          user_id      INT NOT NULL,
+          token        VARCHAR(200) NOT NULL,
+          platform     VARCHAR(10) NOT NULL DEFAULT 'android',
+          device_name  VARCHAR(120) NULL,
+          created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_push_token (token),
+          INDEX idx_push_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

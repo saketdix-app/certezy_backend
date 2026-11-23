@@ -517,6 +517,14 @@ const schemas = {
     paypal_order_id: Joi.string().max(100).required(),
   }),
   // Public course-page enquiry forms (enquiries module)
+  // ── Team app push notifications ──
+  pushDevice: Joi.object({
+    token: Joi.string().trim().pattern(/^Expo(nent)?PushToken\[[^\]]+\]$/).max(200).required()
+      .messages({ 'string.pattern.base': 'Not an Expo push token' }),
+    platform: Joi.string().valid('android', 'ios').default('android'),
+    device_name: Joi.string().trim().max(120).allow('', null).optional(),
+  }),
+  pushDeviceRemove: Joi.object({ token: Joi.string().trim().max(200).required() }),
   // ── Live batches ──
   liveBatch: Joi.object({
     title: Joi.string().trim().min(3).max(160).required(),

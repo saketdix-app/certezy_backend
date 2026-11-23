@@ -5,6 +5,8 @@ import { Router } from 'express'
 import authenticate from '../../middleware/auth.js'
 import { pool } from '../../config/db.js'
 import { success } from '../../utils/response.js'
+import { validate, schemas } from '../../middleware/validate.js'
+import { registerDevice, removeDevice } from '../../utils/push.js'
 
 const router = Router()
 
@@ -35,6 +37,26 @@ router.put('/read', authenticate, async (req, res, next) => {
       id ? [req.user.id, id] : [req.user.id]
     )
     return success(res, { message: 'Marked as read' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// POST /notifications/devices { token, platform, device_name } — the Team app's push token
+router.post('/devices', authenticate, validate(schemas.pushDevice), async (req, res, next) => {
+  try {
+    await registerDevice(req.user.id, req.body)
+    return success(res, { message: 'Device registered' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// DELETE /notifications/devices { token } — signed out on that phone
+router.delete('/devices', authenticate, validate(schemas.pushDeviceRemove), async (req, res, next) => {
+  try {
+    await removeDevice(req.user.id, req.body.token)
+    return success(res, { message: 'Device removed' })
   } catch (err) {
     next(err)
   }
