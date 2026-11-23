@@ -200,13 +200,11 @@ const oauthLogin = async (user) => {
     err.statusCode = 403
     throw err
   }
-  // Google / GitHub can't do the email-code step: two-step accounts use email + password
-  const [[tf]] = await pool.query('SELECT two_factor_enabled FROM users WHERE id = ? LIMIT 1', [user.id])
+  // Two-step sign-in on: Google / GitHub proves who it is, then the emailed code
+  // is still needed — no session until it's entered (same as email + password)
+  const [[tf]] = await pool.query('SELECT id, name, email, two_factor_enabled FROM users WHERE id = ? LIMIT 1', [user.id])
   if (tf?.two_factor_enabled) {
-    const err = new Error('Two-step sign-in is on for this account. Sign in with your email and password.')
-    err.statusCode = 409
-    err.publicCode = 'TWO_FACTOR_REQUIRED'
-    throw err
+    return { two_factor_required: true, ...(await startChallenge(tf, 'login')) }
   }
   const tokens = await generateTokens(user)
   return {
