@@ -24,8 +24,8 @@ const checkSession = async (req, decoded, user) => {
   )
   if (!s) return Object.assign(new Error('Your session has ended. Please sign in again.'), { statusCode: 401, publicCode: 'SESSION_ENDED' })
   const limit = (IDLE_MINUTES[user.role] ?? IDLE_MINUTES.default) * 60
-  // The Team app stays signed in like other phone apps (Super Admins keep the 15-minute rule)
-  const appSession = s.client === 'mobile' && user.role !== 'super_admin'
+  // The Team app stays signed in like other phone apps, for every role (the website keeps the idle rule)
+  const appSession = s.client === 'mobile'
   if (!appSession && Number(s.idle) > limit) {
     await pool.query('DELETE FROM refresh_tokens WHERE id = ?', [s.id])
     return Object.assign(new Error(`You were signed out after ${limit / 60} minutes without activity`), {
