@@ -520,12 +520,13 @@ const markSeen = async (actor, lead) => {
 /** How many of my leads I haven't opened since they were assigned (tab / menu dot). */
 export const newLeadsCount = async (actor) => {
   assertCrmUser(actor)
-  const [[{ n }]] = await pool.query(
-    `SELECT COUNT(*) AS n FROM leads
-     WHERE owner_id = ? AND archived_at IS NULL AND (owner_seen_at IS NULL OR owner_seen_at < assigned_at)`,
-    [actor.id]
-  )
-  return { new_leads: Number(n) }
+  const unseen = 'owner_id = ? AND archived_at IS NULL AND (owner_seen_at IS NULL OR owner_seen_at < assigned_at)'
+  const [[{ n }]] = await pool.query(`SELECT COUNT(*) AS n FROM leads WHERE ${unseen}`, [actor.id])
+  // The most recently assigned one, for "New lead assigned: Asha Rao" on the browser tab
+  const [[latest]] = Number(n)
+    ? await pool.query(`SELECT id, name FROM leads WHERE ${unseen} ORDER BY assigned_at DESC, id DESC LIMIT 1`, [actor.id])
+    : [[null]]
+  return { new_leads: Number(n), latest: latest ? { id: latest.id, name: latest.name } : null }
 }
 
 export const getLead = async (actor, id) => {
