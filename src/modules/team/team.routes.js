@@ -6,13 +6,15 @@ import { Router } from 'express'
 import * as controller from './team.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import { allow } from '../../utils/access.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
-const managers = [authenticate, role('admin')] // Admins and Super Admins
+// Admins and Super Admins, and Sub-Admins with "Team" (Team → Permissions)
+const managers = [authenticate, allow('can_manage_team')]
 
 router.get('/', ...managers, controller.list)
-router.get('/audit', ...managers, controller.audit)
+router.get('/audit', authenticate, role('admin'), controller.audit)
 router.get('/:id', ...managers, controller.get)
 router.post('/', ...managers, validate(schemas.createTeamMember), controller.create)
 router.post('/:id/resend-invite', ...managers, controller.resendInvite)

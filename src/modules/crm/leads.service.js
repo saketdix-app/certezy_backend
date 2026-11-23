@@ -21,6 +21,8 @@ import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { getCompletionStatus } from '../certificates/certificates.service.js'
 import { autoAssign } from './distribution.service.js'
+import { isCrmManager } from '../../utils/access.js'
+import { reauthenticate } from '../../utils/reauth.js'
 import {
   CLOSED_STAGES,
   DISCUSSION_TYPES,
@@ -36,7 +38,8 @@ import {
 
 const fail = (statusCode, message, extra) => Object.assign(new Error(message), { statusCode }, extra)
 const MANAGERS = ['super_admin', 'admin']
-const isManager = (actor) => MANAGERS.includes(actor?.role)
+// Admins, and Sub-Admins with CRM access (Team → Permissions), work every lead
+const isManager = (actor) => isCrmManager(actor)
 const COORDINATOR = 'exam_coordinator'
 const isCoordinator = (actor) => actor?.role === COORDINATOR
 /** Owner or Admin: may edit the lead, move it through the pipeline, assign a coordinator. */
@@ -1137,6 +1140,57 @@ export const consultantProgress = async (actor) => {
     'SELECT COUNT(*) AS unassigned FROM leads WHERE archived_at IS NULL AND owner_id IS NULL'
   )
   return { consultants, unassigned: n(unassigned) }
+}
+
+/**
+ * Super Admin only: delete leads for good, after re-entering their password.
+ * Their timeline, follow-ups and WhatsApp messages go with them; payments,
+ * enrollments, certificates, discount links and batch enrollments stay but
+ * are unlinked. The audit log keeps who deleted what.
+ */
+export const deleteLeads = async (req, { lead_ids, password }) => {
+  const actor = req.user
+  if (actor?.role !== 'super_admin') {
+    await audit(req, { action: 'lead.delete', targetType: 'lead', result: 'denied', details: { count: lead_ids?.length } })
+    throw fail(403, 'Only a Super Admin can delete leads')
+  }
+  await reauthenticate(actor, password)
+  const ids = [...new Set((lead_ids ?? []).map(Number).filter(Boolean))]
+  const [rows] = await pool.query('SELECT id, name, email, phone, stage, owner_id FROM leads WHERE id IN (?)', [ids])
+  if (!rows.length) throw fail(404, 'Those leads were not found')
+  const found = rows.map((r) => r.id)
+
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    const run = async (sql) => {
+      try {
+        await conn.query(sql, [found])
+      } catch (err) {
+        if (err.code !== 'ER_NO_SUCH_TABLE' && err.code !== 'ER_BAD_FIELD_ERROR') throw err
+      }
+    }
+    await run('DELETE FROM lead_activities WHERE lead_id IN (?)')
+    await run('DELETE FROM lead_follow_ups WHERE lead_id IN (?)')
+    await run('DELETE FROM whatsapp_messages WHERE lead_id IN (?)')
+    for (const t of ['lead_ingest_events', 'batch_enrollments', 'payments', 'discount_links', 'enrollments', 'certificates']) {
+      await run(`UPDATE ${t} SET lead_id = NULL WHERE lead_id IN (?)`)
+    }
+    await conn.query('DELETE FROM leads WHERE id IN (?)', [found])
+    await conn.commit()
+  } catch (err) {
+    await conn.rollback()
+    throw err
+  } finally {
+    conn.release()
+  }
+  await audit(req, {
+    action: 'lead.delete',
+    targetType: 'lead',
+    targetId: found.length === 1 ? found[0] : null,
+    details: { count: found.length, leads: rows.slice(0, 200).map((r) => ({ id: r.id, name: r.name, stage: r.stage, owner_id: r.owner_id })) },
+  })
+  return { deleted: found.length, ids: found }
 }
 
 /** People a lead can be assigned to (Admin create form). */

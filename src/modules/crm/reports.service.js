@@ -18,10 +18,11 @@ import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { STAGES } from './crm.constants.js'
 import { PAYMENT_ALERT_SQL, TICKET_EARNED_SQL } from './leads.service.js'
+import { can } from '../../utils/access.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const assertManager = (actor) => {
-  if (!['super_admin', 'admin'].includes(actor?.role)) throw fail(403, 'Reports are for Admins')
+  if (!can(actor, 'can_view_crm_reports')) throw fail(403, 'Reports are for Admins')
 }
 const toSql = (d) => new Date(d).toISOString().slice(0, 19).replace('T', ' ')
 const n = (v) => Number(v ?? 0)

@@ -517,6 +517,16 @@ const schemas = {
     paypal_order_id: Joi.string().max(100).required(),
   }),
   // Public course-page enquiry forms (enquiries module)
+  deleteLeads: Joi.object({
+    lead_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(2000).required(),
+    password: Joi.string().max(72).required().messages({ 'any.required': 'Enter your password to confirm' }),
+  }),
+  // ── Two-step sign-in ──
+  loginCode: Joi.object({
+    challenge: Joi.string().trim().hex().length(48).required(),
+    code: Joi.string().trim().pattern(/^\d{6}$/).required().messages({ 'string.pattern.base': 'Enter the 6-digit code' }),
+  }),
+  loginChallenge: Joi.object({ challenge: Joi.string().trim().hex().length(48).required() }),
   // ── Team app push notifications ──
   pushDevice: Joi.object({
     token: Joi.string().trim().pattern(/^Expo(nent)?PushToken\[[^\]]+\]$/).max(200).required()

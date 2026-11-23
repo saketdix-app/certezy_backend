@@ -831,6 +831,50 @@ const STEPS = [
     },
   },
   {
+    name: 'admin_permissions: Sub-Admin feature areas (CRM, lead assignment, CRM reports, team, live batches)',
+    run: async () => {
+      let changed = false
+      for (const col of ['can_access_crm', 'can_assign_leads', 'can_view_crm_reports', 'can_manage_team', 'can_manage_batches']) {
+        changed = (await addColumnIfMissing('admin_permissions', col, 'TINYINT(1) NOT NULL DEFAULT 0')) || changed
+      }
+      return changed
+    },
+  },
+  {
+    name: 'refresh_tokens.last_activity_at (idle sign-out)',
+    run: async () => {
+      const added = await addColumnIfMissing('refresh_tokens', 'last_activity_at', 'DATETIME NULL')
+      if (added) await pool.query('UPDATE refresh_tokens SET last_activity_at = UTC_TIMESTAMP()')
+      return added
+    },
+  },
+  {
+    name: 'users.two_factor_enabled + login_challenges (email one-time codes)',
+    run: async () => {
+      const a = await addColumnIfMissing('users', 'two_factor_enabled', 'TINYINT(1) NOT NULL DEFAULT 0')
+      const b = await addColumnIfMissing('users', 'two_factor_enabled_at', 'DATETIME NULL')
+      let c = false
+      if (!(await tableExists('login_challenges'))) {
+        await pool.query(`
+          CREATE TABLE login_challenges (
+            id           VARCHAR(64) PRIMARY KEY,
+            user_id      INT NOT NULL,
+            purpose      VARCHAR(10) NOT NULL DEFAULT 'login',
+            code_hash    CHAR(64) NOT NULL,
+            attempts     TINYINT NOT NULL DEFAULT 0,
+            sends        TINYINT NOT NULL DEFAULT 1,
+            expires_at   DATETIME NOT NULL,
+            last_sent_at DATETIME NOT NULL,
+            created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_lc_user (user_id, purpose)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `)
+        c = true
+      }
+      return a || b || c
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

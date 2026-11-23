@@ -11,7 +11,7 @@ const findById = async (id) => {
   const [rows] = await pool.query(
     `SELECT id, name, email, role, gender, mobile, avatar,
             oauth_provider, is_verified, is_active, is_first_login,
-            created_at
+            two_factor_enabled, created_at
      FROM users WHERE id = ? LIMIT 1`,
     [id]
   )
@@ -28,18 +28,24 @@ const createUser = async ({ name, email, password, role = 'student' }) => {
 }
 
 const saveRefreshToken = async ({ userId, token, expiresAt }) => {
-  await pool.query('INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)', [
-    userId,
-    token,
-    expiresAt,
-  ])
+  const [r] = await pool.query(
+    'INSERT INTO refresh_tokens (user_id, token, expires_at, last_activity_at) VALUES (?, ?, ?, UTC_TIMESTAMP())',
+    [userId, token, expiresAt]
+  )
   // Sign-in or session refresh: "last active" on the Team page
   await pool.query('UPDATE users SET last_active_at = UTC_TIMESTAMP() WHERE id = ?', [userId]).catch(() => {})
+  return r.insertId
+}
+
+/** Refresh rotation keeps the session (same row id): new token, new expiry. */
+const rotateRefreshToken = async (sessionId, { token, expiresAt }) => {
+  await pool.query('UPDATE refresh_tokens SET token = ?, expires_at = ? WHERE id = ?', [token, expiresAt, sessionId])
 }
 
 const findRefreshToken = async (token) => {
   const [rows] = await pool.query(
-    `SELECT rt.*, u.id as uid, u.role, u.is_active
+    `SELECT rt.*, u.id as uid, u.role, u.is_active,
+            TIMESTAMPDIFF(SECOND, COALESCE(rt.last_activity_at, UTC_TIMESTAMP()), UTC_TIMESTAMP()) AS idle_seconds
      FROM refresh_tokens rt
      JOIN users u ON u.id = rt.user_id
      WHERE rt.token = ? AND rt.expires_at > NOW()
@@ -119,6 +125,7 @@ export {
   findById,
   createUser,
   saveRefreshToken,
+  rotateRefreshToken,
   findRefreshToken,
   deleteRefreshToken,
   deleteAllRefreshTokens,

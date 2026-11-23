@@ -261,6 +261,22 @@ const sendSecurityNoticeMail = (to, { name, title, lines = [] }) =>
     `,
   })
 
+// Two-step sign-in: the one-time code (sent straight away, not queued)
+const sendLoginCodeMail = (to, { name, code, purpose = 'login', minutes = 10 }) =>
+  sendMail({
+    to,
+    subject: purpose === 'login' ? `${code} is your CERTEZY sign-in code` : `${code} is your CERTEZY verification code`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p>${purpose === 'login' ? 'Use this code to finish signing in to CERTEZY:' : 'Use this code to turn on two-step sign-in for your CERTEZY account:'}</p>
+        <p style="font-size:30px;font-weight:bold;letter-spacing:8px;color:#1e3f5e;margin:18px 0">${escapeHtml(code)}</p>
+        <p style="font-size:13px;color:#5b6b7b">It works for ${minutes} minutes. Never share it — CERTEZY staff will never ask for it.<br>
+          If you didn't try to sign in, change your password straight away.</p>
+      </div>
+    `,
+  })
+
 // Bought a course without an account (guest checkout): set a password to start
 const sendAccountReadyMail = (to, { name, courseTitle, setUrl, days = 7 }) =>
   sendMail({
@@ -315,4 +331,5 @@ export {
   sendSubAdminCredsMail,
   sendCourseAssignedMail,
   sendContactReplyMail,
+  sendLoginCodeMail,
 }

@@ -5,14 +5,15 @@
 
 import { Router } from 'express'
 import authenticate from '../../middleware/auth.js'
-import role from '../../middleware/role.js'
+import { allow } from '../../utils/access.js'
 import { validate, schemas } from '../../middleware/validate.js'
 import { enquiryLimiter } from '../../middleware/rateLimit.js'
 import { success } from '../../utils/response.js'
 import * as service from './batches.service.js'
 
 const router = Router()
-const admins = [authenticate, role('admin')] // Admins and Super Admins
+// Admins and Super Admins, and Sub-Admins with "Live batches" (Team → Permissions)
+const admins = [authenticate, allow('can_manage_batches')]
 const handle = (fn) => async (req, res, next) => {
   try {
     await fn(req, res)

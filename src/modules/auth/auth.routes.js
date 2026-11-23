@@ -14,7 +14,13 @@ const router = Router()
 // ─── LOCAL AUTH ──────────────────────────────────────────────
 router.post('/register', registerLimiter, validate(schemas.register), controller.register)
 router.post('/login', loginLimiter, validate(schemas.login), controller.login)
+router.post('/login/verify', loginLimiter, validate(schemas.loginCode), controller.verifyLogin)
+router.post('/login/resend', loginLimiter, validate(schemas.loginChallenge), controller.resendLoginCode)
 router.post('/refresh', controller.refresh)
+router.post('/activity', authenticate, controller.activity)
+router.post('/2fa/setup', authenticate, controller.twoFactorSetup)
+router.post('/2fa/enable', authenticate, validate(schemas.loginCode), controller.twoFactorEnable)
+router.post('/2fa/disable', authenticate, validate(schemas.reauth), controller.twoFactorDisable)
 router.post('/logout', controller.logout)
 
 // Forgot password → email link → new password

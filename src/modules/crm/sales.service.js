@@ -13,10 +13,11 @@ import { pool } from '../../config/db.js'
 import { notify } from '../../utils/notify.js'
 import { SALE_ATTRIBUTION } from './crm.constants.js'
 import { onSale } from './automation.service.js'
+import { isCrmManager } from '../../utils/access.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const MANAGERS = ['super_admin', 'admin']
-const isManager = (actor) => MANAGERS.includes(actor?.role)
+const isManager = (actor) => isCrmManager(actor)
 const ABANDONED_HOURS = 24
 
 const findLeadForPayment = async (payment) => {

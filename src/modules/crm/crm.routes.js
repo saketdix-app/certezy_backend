@@ -6,14 +6,15 @@
 import { Router } from 'express'
 import * as controller from './leads.controller.js'
 import authenticate from '../../middleware/auth.js'
-import role from '../../middleware/role.js'
+import { crmRoles } from '../../utils/access.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
 // Sales side (Super Admins pass as Admins)
-const crm = [authenticate, role('admin', 'consultant')]
+// Sub-Admins with CRM access (Team → Permissions) pass as Admins
+const crm = [authenticate, crmRoles('admin', 'consultant')]
 // Also Exam Coordinators: their leads, notes, WhatsApp, the exam and Course Done
-const crmAll = [authenticate, role('admin', 'consultant', 'exam_coordinator')]
+const crmAll = [authenticate, crmRoles('admin', 'consultant', 'exam_coordinator')]
 
 router.get('/dashboard', ...crmAll, controller.dashboard)
 router.get('/follow-ups', ...crmAll, controller.followUps)
@@ -25,6 +26,8 @@ router.get('/leads', ...crmAll, controller.list)
 router.post('/leads', ...crm, validate(schemas.createLead), controller.create)
 router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), controller.movePreview)
 router.post('/leads/assign', ...crm, validate(schemas.moveLeads), controller.move)
+// Super Admin only, with their password: delete leads for good
+router.post('/leads/delete', ...crm, validate(schemas.deleteLeads), controller.remove)
 router.get('/leads/:id', ...crmAll, controller.get)
 router.patch('/leads/:id', ...crm, validate(schemas.updateLead), controller.update)
 router.post('/leads/:id/stage', ...crmAll, validate(schemas.changeLeadStage), controller.changeStage)
