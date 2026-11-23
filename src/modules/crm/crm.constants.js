@@ -3,6 +3,8 @@
 
 // The eight stages, in pipeline order
 export const STAGES = [
+  // Uploaded in bulk; the consultant works them in when they have time
+  'backlog',
   'new',
   'attempting_contact',
   'in_conversation',
@@ -15,6 +17,7 @@ export const STAGES = [
 ]
 
 export const STAGE_LABELS = {
+  backlog: 'Backlog',
   new: 'New Leads',
   attempting_contact: 'Attempting Contact',
   in_conversation: 'In Conversation',
@@ -31,6 +34,7 @@ export const STAGE_LABELS = {
 // moves there automatically when its Payment Status is set to Payment Done.
 // Scheduling the exam moves an Application lead to Exam Scheduled.
 export const TRANSITIONS = {
+  backlog: ['attempting_contact', 'not_interested', 'junk'],
   new: ['attempting_contact', 'junk'],
   attempting_contact: ['in_conversation', 'on_hold', 'not_interested', 'junk'],
   in_conversation: ['on_hold', 'application', 'not_interested'],

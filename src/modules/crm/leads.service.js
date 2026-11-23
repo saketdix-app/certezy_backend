@@ -389,7 +389,7 @@ export const changeStage = async (req, id, { stage, reason, ticket_size, ticket_
       lead.stage,
       why || null,
       CLOSED_STAGES.includes(stage) ? why : null,
-      lead.stage === 'new' && !CLOSED_STAGES.includes(stage) ? toSqlDate(new Date()) : null,
+      ['new', 'backlog'].includes(lead.stage) && !CLOSED_STAGES.includes(stage) ? toSqlDate(new Date()) : null,
       ticket?.ticket_size ?? null,
       ticket?.ticket_currency ?? null,
       examAt,
@@ -746,6 +746,7 @@ export const dashboard = async (actor) => {
     `SELECT
        SUM(l.stage NOT IN ('not_interested','junk','course_done')) AS open_leads,
        SUM(l.stage = 'new') AS new_leads,
+       SUM(l.stage = 'backlog') AS backlog,
        SUM(l.stage = 'in_conversation') AS in_conversation,
        SUM(l.stage = 'application') AS applications,
        SUM(l.stage = 'exam_scheduled') AS exam_scheduled,
@@ -832,6 +833,7 @@ export const dashboard = async (actor) => {
     kpis: {
       open_leads: num(k.open_leads),
       new_leads: num(k.new_leads),
+      backlog: num(k.backlog),
       follow_ups_today: num(f.due_today),
       overdue_follow_ups: num(f.overdue),
       in_conversation: num(k.in_conversation),

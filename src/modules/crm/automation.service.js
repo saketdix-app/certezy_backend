@@ -16,7 +16,7 @@ import { audit } from '../../utils/audit.js'
 import { notify } from '../../utils/notify.js'
 
 export const AUTOMATIONS = ['auto_stage_on_payment', 'auto_course_done', 'abandoned_checkout_nudge', 'follow_up_reminders']
-const EARLY_STAGES = ['new', 'attempting_contact', 'in_conversation', 'on_hold']
+const EARLY_STAGES = ['backlog', 'new', 'attempting_contact', 'in_conversation', 'on_hold']
 const ABANDONED_AFTER_MIN = 60
 const REMIND_BEFORE_MIN = 15
 

@@ -102,6 +102,8 @@ app.use('/api/payments/razorpay/webhook', express.raw({ type: 'application/json'
 app.use(`${API_PREFIX}/webhooks`, express.raw({ type: '*/*', limit: '1mb' }))
 
 // ─── BODY PARSING ────────────────────────────────────────────
+// Lead CSV import: files up to 50 MB (sent as text in JSON)
+app.use(`${API_PREFIX}/crm/leads/import`, express.json({ limit: '55mb' }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
