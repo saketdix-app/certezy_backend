@@ -517,6 +517,15 @@ const schemas = {
     paypal_order_id: Joi.string().max(100).required(),
   }),
   // Public course-page enquiry forms (enquiries module)
+  // Upload leads from a CSV (check first with dry_run)
+  leadImport: Joi.object({
+    csv: Joi.string().max(5 * 1024 * 1024).required().messages({ 'string.max': 'The file is too big (5 MB max) — split it' }),
+    dry_run: Joi.boolean().default(false),
+    default_source: Joi.string().valid(...LEAD_SOURCES).default('manual'),
+    course_id: Joi.number().integer().positive().allow(null, '').optional(),
+    owner_mode: Joi.string().valid('me', 'unassigned', 'owner', 'round_robin', 'column').default('unassigned'),
+    owner_id: Joi.number().integer().positive().allow(null, '').optional(),
+  }),
   deleteLeads: Joi.object({
     lead_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(2000).required(),
     password: Joi.string().max(72).required().messages({ 'any.required': 'Enter your password to confirm' }),

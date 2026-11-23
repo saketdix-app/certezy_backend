@@ -28,6 +28,8 @@ router.post('/leads/assign/preview', ...crm, validate(schemas.moveLeads), contro
 router.post('/leads/assign', ...crm, validate(schemas.moveLeads), controller.move)
 // Super Admin only, with their password: delete leads for good
 router.post('/leads/delete', ...crm, validate(schemas.deleteLeads), controller.remove)
+// Upload leads from a CSV (dry_run checks the file first)
+router.post('/leads/import', ...crm, validate(schemas.leadImport), controller.importCsv)
 router.get('/leads/:id', ...crmAll, controller.get)
 router.patch('/leads/:id', ...crm, validate(schemas.updateLead), controller.update)
 router.post('/leads/:id/stage', ...crmAll, validate(schemas.changeLeadStage), controller.changeStage)

@@ -1,6 +1,7 @@
 // src/modules/crm/leads.controller.js
 
 import * as service from './leads.service.js'
+import { importLeads } from './leadImport.service.js'
 import * as distribution from './distribution.service.js'
 import * as actions from './actions.service.js'
 import { salesReport } from './sales.service.js'
@@ -19,6 +20,10 @@ const handle = (fn) => async (req, res, next) => {
 }
 
 export const dashboard = handle(async (req, res) => success(res, { data: await service.dashboard(req.user) }))
+export const importCsv = handle(async (req, res) => {
+  const data = await importLeads(req, req.body)
+  return success(res, { message: data.dry_run ? 'File checked' : `${data.created} leads imported`, data })
+})
 export const remove = handle(async (req, res) => {
   const data = await service.deleteLeads(req, req.body)
   return success(res, { message: data.deleted === 1 ? 'Lead deleted' : `${data.deleted} leads deleted`, data })
