@@ -657,9 +657,14 @@ export const listLeads = async (actor, q = {}) => {
     if (q.contact === 'never') where.push(`NOT ${talked})`)
   }
 
+  // Backlog leads live only in the Backlog tab: "All" leaves them out (a search still finds them)
+  const ALL_TAB_SQL = "l.stage <> 'backlog'"
+  const allTab = !(q.stage && STAGES.includes(q.stage)) && !q.search
+
   // Admins: every matching lead id (for "select all N" bulk moves)
   if (q.ids_only && isManager(actor)) {
     if (q.stage && STAGES.includes(q.stage)) add('l.stage = ?', q.stage)
+    else if (allTab) where.push(ALL_TAB_SQL)
     const [ids] = await pool.query(`SELECT l.id FROM leads l WHERE ${where.join(' AND ')} ORDER BY l.id LIMIT 2000`, values)
     const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM leads l WHERE ${where.join(' AND ')}`, values)
     return { ids: ids.map((r) => r.id), total: Number(total), capped: Number(total) > ids.length }
@@ -674,6 +679,7 @@ export const listLeads = async (actor, q = {}) => {
   for (const r of countRows) counts[r.stage] = Number(r.n)
 
   if (q.stage && STAGES.includes(q.stage)) add('l.stage = ?', q.stage)
+  else if (allTab) where.push(ALL_TAB_SQL)
   const page = Math.max(1, Number(q.page) || 1)
   const limit = Math.min(100, Math.max(1, Number(q.limit) || 25))
   const [rows] = await pool.query(
@@ -745,7 +751,7 @@ export const dashboard = async (actor) => {
   const { start, end } = todayBounds()
   const [[k]] = await pool.query(
     `SELECT
-       SUM(l.stage NOT IN ('not_interested','junk','course_done')) AS open_leads,
+       SUM(l.stage NOT IN ('backlog','not_interested','junk','course_done')) AS open_leads, -- backlog is counted on its own
        SUM(l.stage = 'new') AS new_leads,
        SUM(l.stage = 'backlog') AS backlog,
        SUM(l.stage = 'in_conversation') AS in_conversation,
