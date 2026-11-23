@@ -27,10 +27,10 @@ const createUser = async ({ name, email, password, role = 'student' }) => {
   return result.insertId
 }
 
-const saveRefreshToken = async ({ userId, token, expiresAt }) => {
+const saveRefreshToken = async ({ userId, token, expiresAt, client = null }) => {
   const [r] = await pool.query(
-    'INSERT INTO refresh_tokens (user_id, token, expires_at, last_activity_at) VALUES (?, ?, ?, UTC_TIMESTAMP())',
-    [userId, token, expiresAt]
+    'INSERT INTO refresh_tokens (user_id, token, expires_at, last_activity_at, client) VALUES (?, ?, ?, UTC_TIMESTAMP(), ?)',
+    [userId, token, expiresAt, client]
   )
   // Sign-in or session refresh: "last active" on the Team page
   await pool.query('UPDATE users SET last_active_at = UTC_TIMESTAMP() WHERE id = ?', [userId]).catch(() => {})

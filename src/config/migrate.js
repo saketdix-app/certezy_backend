@@ -875,6 +875,10 @@ const STEPS = [
     },
   },
   {
+    name: 'refresh_tokens.client (CERTEZY Team app sessions stay signed in)',
+    run: () => addColumnIfMissing('refresh_tokens', 'client', 'VARCHAR(10) NULL'),
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

@@ -10,9 +10,9 @@ const generateAccessToken = (payload) => {
   })
 }
 
-const generateRefreshToken = (payload) => {
+const generateRefreshToken = (payload, expiresIn = env.jwt.refreshExpiresIn) => {
   return jwt.sign(payload, env.jwt.refreshSecret, {
-    expiresIn: env.jwt.refreshExpiresIn,
+    expiresIn,
     algorithm: 'HS256',
   })
 }
@@ -25,9 +25,9 @@ const verifyRefreshToken = (token) => {
   return jwt.verify(token, env.jwt.refreshSecret)
 }
 
-const getRefreshTokenExpiry = () => {
+const getRefreshTokenExpiry = (days = 7) => {
   const date = new Date()
-  date.setDate(date.getDate() + 7)
+  date.setDate(date.getDate() + days)
   return date
 }
 
