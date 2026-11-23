@@ -58,6 +58,8 @@ const sendPasswordResetJob = (data) => addEmailJob('passwordReset', data)
 const sendStaffInviteJob = (data) => addEmailJob('staffInvite', data)
 // data: { to, name, roleLabel, invitedBy, setUrl, hours }
 const sendSecurityNoticeJob = (data) => addEmailJob('securityNotice', data)
+// New lead(s) assigned to a consultant: { to, name, title, body, url }
+const sendLeadAssignedJob = (data) => addEmailJob('leadAssigned', data)
 // Guest checkout: course unlocked, set a password
 const sendAccountReadyJob = (data) => addEmailJob('accountReady', data)
 // Course syllabus (course-page enquiry form)
@@ -67,6 +69,7 @@ const sendSyllabusJob = (data) => addEmailJob('syllabus', data)
 export {
   sendStaffInviteJob,
   sendSecurityNoticeJob,
+  sendLeadAssignedJob,
   sendPasswordResetJob,
   sendWelcomeJob,
   sendDiscountJob,

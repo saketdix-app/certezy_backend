@@ -252,9 +252,16 @@ export const updateLead = async (req, id, body) => {
           body.ticket_currency ?? lead.ticket_currency
         )
       : { ticket_size: lead.ticket_size, ticket_currency: lead.ticket_currency }
+  // The phone came from the lead source: only Admins change it (or the consultant who typed it in).
+  // Consultants add a separate WhatsApp number instead.
+  const newPhone = body.phone !== undefined ? body.phone || null : lead.phone
+  if (String(newPhone ?? '') !== String(lead.phone ?? '') && !canEditPhone(actor, lead)) {
+    throw fail(403, "The phone number comes from the lead source and can't be changed. Add a WhatsApp number instead.")
+  }
   const next = {
     name: body.name ?? lead.name,
-    phone: body.phone !== undefined ? body.phone || null : lead.phone,
+    phone: newPhone,
+    whatsapp_number: body.whatsapp_number !== undefined ? body.whatsapp_number || null : lead.whatsapp_number ?? null,
     email: body.email !== undefined ? body.email || null : lead.email,
     course_id: body.course_id !== undefined ? body.course_id || null : lead.course_id,
     preferred_schedule: body.preferred_schedule !== undefined ? body.preferred_schedule || null : lead.preferred_schedule,
@@ -269,12 +276,13 @@ export const updateLead = async (req, id, body) => {
   const changed = Object.keys(next).filter((k) => !same(k))
   if (!changed.length) return getLead(actor, lead.id)
   await pool.query(
-    `UPDATE leads SET name = ?, phone = ?, phone_norm = ?, email = ?, email_norm = ?, course_id = ?,
+    `UPDATE leads SET name = ?, phone = ?, phone_norm = ?, whatsapp_number = ?, email = ?, email_norm = ?, course_id = ?,
        preferred_schedule = ?, ticket_size = ?, ticket_currency = ?, user_id = COALESCE(user_id, ?) WHERE id = ?`,
     [
       next.name,
       next.phone,
       normalizePhone(next.phone),
+      next.whatsapp_number,
       next.email,
       normalizeEmail(next.email),
       next.course_id,
@@ -497,8 +505,32 @@ export const listFollowUps = async (actor, { when = 'today', owner_id } = {}) =>
 
 // ── Read ──────────────────────────────────────────────────────────────────
 
+/** Phone from the lead source: Admins, or the consultant who added the lead by hand. */
+const canEditPhone = (actor, lead) => isManager(actor) || (lead.source === 'manual' && lead.created_by === actor?.id)
+
+/** The owner opened the lead: it's no longer new (red dot gone). */
+const markSeen = async (actor, lead) => {
+  if (lead.owner_id !== actor?.id) return
+  const seen = lead.owner_seen_at ? new Date(lead.owner_seen_at).getTime() : 0
+  const assigned = lead.assigned_at ? new Date(lead.assigned_at).getTime() : 0
+  if (seen && seen >= assigned) return
+  await pool.query('UPDATE leads SET owner_seen_at = UTC_TIMESTAMP() WHERE id = ?', [lead.id])
+}
+
+/** How many of my leads I haven't opened since they were assigned (tab / menu dot). */
+export const newLeadsCount = async (actor) => {
+  assertCrmUser(actor)
+  const [[{ n }]] = await pool.query(
+    `SELECT COUNT(*) AS n FROM leads
+     WHERE owner_id = ? AND archived_at IS NULL AND (owner_seen_at IS NULL OR owner_seen_at < assigned_at)`,
+    [actor.id]
+  )
+  return { new_leads: Number(n) }
+}
+
 export const getLead = async (actor, id) => {
   const lead = await loadVisibleLead(actor, id)
+  await markSeen(actor, lead)
   const [[extra]] = await pool.query(
     `SELECT c.title AS course_title, c.slug AS course_slug, o.name AS owner_name, o.email AS owner_email,
             ab.name AS assigned_by_name, s.name AS student_name, s.email AS student_email,
@@ -537,6 +569,7 @@ export const getLead = async (actor, id) => {
     payment_alert: paymentAlert(lead),
     access: {
       edit: canManageLead(actor, lead),
+      edit_phone: canManageLead(actor, lead) && canEditPhone(actor, lead),
       assign_exam_coordinator: canManageLead(actor, lead),
       update_application: canManageLead(actor, lead),
       update_exam: true,
@@ -613,6 +646,8 @@ export const listLeads = async (actor, q = {}) => {
   if (q.paid_from) add('l.payment_done_at >= ?', day(q.paid_from))
   if (q.paid_to) add('l.payment_done_at < ?', dayEnd(q.paid_to))
   if (q.alert === '1') where.push(PAYMENT_ALERT_SQL)
+  // Only my leads I haven't opened yet (red dot)
+  if (q.new === '1') add('l.owner_id = ? AND (l.owner_seen_at IS NULL OR l.owner_seen_at < l.assigned_at)', actor.id)
   // Client discussion: talked in the last 7 days / open and quiet for 7+ days / never
   if (['recent', 'quiet', 'never'].includes(q.contact)) {
     const talked = `EXISTS (SELECT 1 FROM lead_activities da WHERE da.lead_id = l.id AND da.type IN (${DISCUSSION_IN})`
@@ -643,6 +678,8 @@ export const listLeads = async (actor, q = {}) => {
   const [rows] = await pool.query(
     `SELECT l.id, l.name, l.phone, l.email, l.source, l.stage, l.course_id, l.owner_id, l.next_follow_up_at,
             l.created_at, l.stage_changed_at, l.user_id, c.title AS course_title, u.name AS owner_name,
+            l.whatsapp_number,
+            (l.owner_id = ${Number(actor.id) || 0} AND (l.owner_seen_at IS NULL OR l.owner_seen_at < l.assigned_at)) AS is_new,
             (e.id IS NOT NULL) AS enrolled,
             l.exam_coordinator_id, ec.name AS exam_coordinator_name, l.exam_status, l.exam_scheduled_at,
             l.exam_completed_at, l.exam_result, l.ticket_size, l.ticket_currency,
@@ -671,6 +708,7 @@ export const listLeads = async (actor, q = {}) => {
     leads: rows.map((r) => ({
       ...r,
       enrolled: Boolean(r.enrolled),
+      is_new: Boolean(r.is_new),
       ticket_size: r.ticket_size == null ? null : Number(r.ticket_size),
       application_submitted: Boolean(r.application_submitted),
       exam_done: Boolean(r.exam_done),

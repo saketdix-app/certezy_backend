@@ -261,6 +261,22 @@ const sendSecurityNoticeMail = (to, { name, title, lines = [] }) =>
     `,
   })
 
+// A consultant got new lead(s)
+const sendLeadAssignedMail = (to, { name, title, body, url }) =>
+  sendMail({
+    to,
+    subject: `${title} — CERTEZY CRM`,
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;color:#0f172a;line-height:1.6">
+        <p>Hi ${escapeHtml(name || 'there')},</p>
+        <p><b>${escapeHtml(title)}</b>${body ? `<br>${escapeHtml(body)}` : ''}</p>
+        <p>Reach out soon — new leads convert best when contacted quickly.</p>
+        <p><a href="${url}" style="background:#2f6496;color:#ffffff;padding:11px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Open in CRM</a></p>
+        <p style="font-size:12px;color:#5b6b7b">You get this email when a lead is assigned to you in CERTEZY CRM.</p>
+      </div>
+    `,
+  })
+
 // Two-step sign-in: the one-time code (sent straight away, not queued)
 const sendLoginCodeMail = (to, { name, code, purpose = 'login', minutes = 10 }) =>
   sendMail({
@@ -332,4 +348,5 @@ export {
   sendCourseAssignedMail,
   sendContactReplyMail,
   sendLoginCodeMail,
+  sendLeadAssignedMail,
 }

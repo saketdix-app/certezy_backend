@@ -879,6 +879,39 @@ const STEPS = [
     run: () => addColumnIfMissing('refresh_tokens', 'client', 'VARCHAR(10) NULL'),
   },
   {
+    name: 'leads.whatsapp_number (consultant-added WhatsApp; the source phone stays as fetched)',
+    run: () => addColumnIfMissing('leads', 'whatsapp_number', 'VARCHAR(30) NULL'),
+  },
+  {
+    name: 'leads.owner_seen_at (red dot on leads the owner has not opened yet)',
+    run: async () => {
+      const added = await addColumnIfMissing('leads', 'owner_seen_at', 'DATETIME NULL')
+      // Leads that exist today count as seen; only new assignments get the dot
+      if (added) await pool.query('UPDATE leads SET owner_seen_at = UTC_TIMESTAMP() WHERE owner_id IS NOT NULL')
+      return added
+    },
+  },
+  {
+    name: 'message_templates (consultants\' WhatsApp / email messages for leads)',
+    run: async () => {
+      if (await tableExists('message_templates')) return false
+      await pool.query(`
+        CREATE TABLE message_templates (
+          id         INT AUTO_INCREMENT PRIMARY KEY,
+          user_id    INT NULL,
+          channel    VARCHAR(10) NOT NULL,
+          title      VARCHAR(80) NOT NULL,
+          subject    VARCHAR(150) NULL,
+          body       TEXT NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_mt_user (user_id, channel)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
+  {
     name: 'audit_logs table (append-only record of sensitive actions)',
     run: async () => {
       if (await tableExists('audit_logs')) return false

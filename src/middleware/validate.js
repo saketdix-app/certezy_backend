@@ -375,6 +375,22 @@ const schemas = {
     preferred_schedule: Joi.string().trim().max(150).allow('', null).optional(),
     ticket_size: Joi.number().positive().max(100000000).precision(2).allow(null).optional(),
     ticket_currency: Joi.string().valid(...TICKET_CURRENCIES).allow(null).optional(),
+    // Added by the consultant; the phone from the lead source is kept as it is
+    whatsapp_number: Joi.string().trim().pattern(/^[+\d][\d\s()-]{6,24}$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'Enter a valid WhatsApp number (with country code, e.g. +91 98765 43210)' }),
+  }),
+  messageTemplate: Joi.object({
+    channel: Joi.string().valid('whatsapp', 'email').required(),
+    title: Joi.string().trim().min(2).max(80).required(),
+    subject: Joi.string().trim().max(150).allow('', null).optional(),
+    body: Joi.string().trim().min(2).max(2000).required(),
+    shared: Joi.boolean().optional(), // Admins: a template for the whole team
+  }),
+  appRelease: Joi.object({
+    version: Joi.string().trim().pattern(/^\d+\.\d+\.\d+$/).required().messages({ 'string.pattern.base': 'Version like 1.3.0' }),
+    version_code: Joi.number().integer().min(1).max(100000).required(),
+    apk_url: Joi.string().trim().uri({ scheme: ['https'] }).max(250).required(),
+    notes: Joi.string().trim().max(240).allow('', null).optional(),
   }),
   changeLeadStage: Joi.object({
     stage: Joi.string().valid(...LEAD_STAGES).required(),
