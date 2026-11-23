@@ -12,11 +12,19 @@
 //                  they are converted from USD at the current rate
 
 import { usdToInr } from './fx.js'
+import env from '../config/env.js'
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100
 
-/** Does this course sell in rupees to visitors from India? Off unless switched on. */
-export const isInrEnabled = (course) => Number(course?.inr_enabled) === 1
+/** Can the server take rupee payments at all? (Razorpay keys set) */
+export const rupeeCheckoutAvailable = () => Boolean(env.razorpay.keyId && env.razorpay.keySecret)
+
+/**
+ * Does this course sell in rupees to visitors from India? Off unless switched
+ * on — and off for every course while Razorpay isn't set up, so India
+ * visitors then see the US$ price and pay with PayPal.
+ */
+export const isInrEnabled = (course) => Number(course?.inr_enabled) === 1 && rupeeCheckoutAvailable()
 
 /** 'INR' only for India visitors on courses that sell in rupees; otherwise 'USD'. */
 export const checkoutCurrency = (course, regionCurrency) =>
@@ -53,6 +61,8 @@ export const describePricing = (course) => {
   }
   // The admin's saved rupee prices, for the course form (kept while rupees are off)
   const saved = {
+    saved_inr_enabled: Number(course.inr_enabled) === 1, // the admin's switch, even while Razorpay is off
+    rupee_checkout_available: rupeeCheckoutAvailable(),
     saved_price_inr: course.price_inr != null ? round2(course.price_inr) : null,
     saved_original_price_inr: course.original_price_inr != null ? round2(course.original_price_inr) : null,
   }
