@@ -43,10 +43,14 @@ const register = async (req, res, next) => {
   }
 }
 
+// The CERTEZY Team app sends "X-Client: mobile": it gets a long session and
+// keeps its refresh token itself (in the phone's secure storage)
+const clientOf = (req) => (String(req.get('x-client') ?? '').toLowerCase() === 'mobile' ? 'mobile' : null)
+
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body
-    const result = await service.login({ email, password })
+    const result = await service.login({ email, password }, { client: clientOf(req) })
     // Two-step sign-in: no session yet — the app asks for the emailed code
     if (result.two_factor_required) {
       return success(res, {
@@ -57,7 +61,12 @@ const login = async (req, res, next) => {
     setCookies(res, result)
     return success(res, {
       message: 'Login successful',
-      data: { user: result.user, isFirstLogin: result.isFirstLogin, accessToken: result.accessToken },
+      data: {
+        user: result.user,
+        isFirstLogin: result.isFirstLogin,
+        accessToken: result.accessToken,
+        ...(clientOf(req) && { refreshToken: result.refreshToken }),
+      },
     })
   } catch (err) {
     next(err)
@@ -67,12 +76,17 @@ const login = async (req, res, next) => {
 // POST /auth/login/verify { challenge, code } — second step of sign-in
 const verifyLogin = async (req, res, next) => {
   try {
-    const result = await service.verifyLogin(req.body)
+    const result = await service.verifyLogin(req.body, { client: clientOf(req) })
     setCookies(res, result)
     await audit(req, { action: 'auth.login_2fa', targetType: 'user', targetId: result.user.id }).catch(() => {})
     return success(res, {
       message: 'Login successful',
-      data: { user: result.user, isFirstLogin: result.isFirstLogin, accessToken: result.accessToken },
+      data: {
+        user: result.user,
+        isFirstLogin: result.isFirstLogin,
+        accessToken: result.accessToken,
+        ...(clientOf(req) && { refreshToken: result.refreshToken }),
+      },
     })
   } catch (err) {
     next(err)
@@ -120,12 +134,13 @@ const activity = (req, res) => success(res, { message: 'ok' })
 
 const refresh = async (req, res, next) => {
   try {
-    const refreshToken = req.cookies?.refreshToken
+    // Website: httpOnly cookie. Team app: the token it stored (body)
+    const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token
     const tokens = await service.refresh(refreshToken)
     setCookies(res, tokens)
     return success(res, {
       message: 'Token refreshed',
-      data: { accessToken: tokens.accessToken },
+      data: { accessToken: tokens.accessToken, ...(tokens.client === 'mobile' && { refreshToken: tokens.refreshToken }) },
     })
   } catch (err) {
     next(err)
@@ -134,7 +149,7 @@ const refresh = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const refreshToken = req.cookies?.refreshToken
+    const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token
     await service.logout(refreshToken)
     clearCookies(res)
     return success(res, { message: 'Logged out successfully' })

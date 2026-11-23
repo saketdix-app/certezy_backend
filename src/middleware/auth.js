@@ -18,13 +18,15 @@ const TOUCH_EVERY_SECONDS = 30
 const checkSession = async (req, decoded, user) => {
   if (!decoded.sid) return null // older token (from before idle sign-out): it expires within 15 min anyway
   const [[s]] = await pool.query(
-    `SELECT id, TIMESTAMPDIFF(SECOND, COALESCE(last_activity_at, UTC_TIMESTAMP()), UTC_TIMESTAMP()) AS idle
+    `SELECT id, client, TIMESTAMPDIFF(SECOND, COALESCE(last_activity_at, UTC_TIMESTAMP()), UTC_TIMESTAMP()) AS idle
      FROM refresh_tokens WHERE id = ? AND user_id = ? LIMIT 1`,
     [decoded.sid, user.id]
   )
   if (!s) return Object.assign(new Error('Your session has ended. Please sign in again.'), { statusCode: 401, publicCode: 'SESSION_ENDED' })
   const limit = (IDLE_MINUTES[user.role] ?? IDLE_MINUTES.default) * 60
-  if (Number(s.idle) > limit) {
+  // The Team app stays signed in like other phone apps (Super Admins keep the 15-minute rule)
+  const appSession = s.client === 'mobile' && user.role !== 'super_admin'
+  if (!appSession && Number(s.idle) > limit) {
     await pool.query('DELETE FROM refresh_tokens WHERE id = ?', [s.id])
     return Object.assign(new Error(`You were signed out after ${limit / 60} minutes without activity`), {
       statusCode: 401,

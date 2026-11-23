@@ -7,7 +7,7 @@ import tokenUtil from '../../utils/token.js'
 import { sendWelcomeJob } from '../../jobs/emailQueue.js'
 import { purgeDateFor, isDeleted } from './userDeletion.js'
 import { pool } from '../../config/db.js'
-import { IDLE_MINUTES, STAFF_PERMISSIONS } from '../../constants.js'
+import { IDLE_MINUTES, MOBILE_SESSION_DAYS, STAFF_PERMISSIONS } from '../../constants.js'
 import { startChallenge, verifyChallenge } from './twoFactor.js'
 const BCRYPT_ROUNDS = 12
 
@@ -34,7 +34,7 @@ const register = async ({ name, email, password }) => {
   return user
 }
 
-const login = async ({ email, password }) => {
+const login = async ({ email, password }, { client = null } = {}) => {
   const user = await queries.findByEmail(email)
   if (!user) {
     const err = new Error('Invalid email or password')
@@ -74,12 +74,12 @@ const login = async ({ email, password }) => {
   if (user.two_factor_enabled) {
     return { two_factor_required: true, ...(await startChallenge(user, 'login')) }
   }
-  return startSession(user)
+  return startSession(user, client)
 }
 
 /** Password (and code, if two-step is on) checked: issue the session. */
-const startSession = async (user) => {
-  const tokens = await generateTokens(user)
+const startSession = async (user, client = null) => {
+  const tokens = await generateTokens(user, null, client)
   return {
     user: await withAccess(sanitizeUser(user)),
     ...tokens,
@@ -88,7 +88,7 @@ const startSession = async (user) => {
 }
 
 /** Second step of sign-in: the emailed code. */
-const verifyLogin = async ({ challenge, code }) => {
+const verifyLogin = async ({ challenge, code }, { client = null } = {}) => {
   const userId = await verifyChallenge(challenge, code, 'login')
   const [[user]] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [userId])
   if (!user || !user.is_active || user.deleted_at) {
@@ -96,7 +96,7 @@ const verifyLogin = async ({ challenge, code }) => {
     err.statusCode = 403
     throw err
   }
-  return startSession(user)
+  return startSession(user, client)
 }
 
 /** Minutes without activity before a session ends: Super Admins 15, everyone else 60. */
@@ -143,8 +143,9 @@ const refresh = async (refreshToken) => {
     throw err
   }
 
-  // No activity for too long: the session is over
-  if (Number(tokenRecord.idle_seconds) > idleLimitSeconds(tokenRecord.role)) {
+  // No activity for too long: the session is over (the Team app stays signed in, except Super Admins)
+  const appSession = tokenRecord.client === 'mobile' && tokenRecord.role !== 'super_admin'
+  if (!appSession && Number(tokenRecord.idle_seconds) > idleLimitSeconds(tokenRecord.role)) {
     await queries.deleteRefreshToken(refreshToken)
     const err = new Error(`You were signed out after ${idleLimitSeconds(tokenRecord.role) / 60} minutes without activity`)
     err.statusCode = 401
@@ -154,7 +155,7 @@ const refresh = async (refreshToken) => {
 
   // Same session, new tokens (the row keeps its id and last activity)
   const user = await queries.findById(tokenRecord.user_id)
-  return generateTokens(user, tokenRecord.id)
+  return { ...(await generateTokens(user, tokenRecord.id, tokenRecord.client)), client: tokenRecord.client ?? null }
 }
 
 const logout = async (refreshToken) => {
@@ -309,12 +310,17 @@ const getById = async (id) => {
  * every request can check and record activity (idle sign-out); refreshing keeps
  * the same session row.
  */
-const generateTokens = async (user, sessionId = null) => {
-  const refreshToken = tokenUtil.generateRefreshToken({ id: user.id, role: user.role })
-  const expiresAt = tokenUtil.getRefreshTokenExpiry()
+const generateTokens = async (user, sessionId = null, client = null) => {
+  // The Team app keeps a long session that renews on every refresh (MOBILE_SESSION_DAYS)
+  const mobile = client === 'mobile'
+  const refreshToken = tokenUtil.generateRefreshToken(
+    { id: user.id, role: user.role },
+    mobile ? `${MOBILE_SESSION_DAYS}d` : undefined
+  )
+  const expiresAt = tokenUtil.getRefreshTokenExpiry(mobile ? MOBILE_SESSION_DAYS : 7)
   let sid = sessionId
   if (sid) await queries.rotateRefreshToken(sid, { token: refreshToken, expiresAt })
-  else sid = await queries.saveRefreshToken({ userId: user.id, token: refreshToken, expiresAt })
+  else sid = await queries.saveRefreshToken({ userId: user.id, token: refreshToken, expiresAt, client: mobile ? 'mobile' : null })
   const accessToken = tokenUtil.generateAccessToken({ id: user.id, role: user.role, sid })
   return { accessToken, refreshToken }
 }
