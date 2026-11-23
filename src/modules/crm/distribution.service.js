@@ -16,11 +16,13 @@ import { audit } from '../../utils/audit.js'
 import { managerIds, notify } from '../../utils/notify.js'
 import { CLOSED_STAGES, POOL_RULE_KEYS, SOURCES } from './crm.constants.js'
 import { todayBounds } from './leads.service.js'
+import { can, canAssignLeads } from '../../utils/access.js'
 
 const fail = (statusCode, message, extra) => Object.assign(new Error(message), { statusCode }, extra)
 const MANAGERS = ['super_admin', 'admin']
+// Admins, and Sub-Admins with CRM access + "Lead assignment" (Team → Permissions)
 const assertManager = (actor) => {
-  if (!MANAGERS.includes(actor?.role)) throw fail(403, 'Only Admins manage lead distribution')
+  if (!canAssignLeads(actor)) throw fail(403, 'Only Admins manage lead distribution')
 }
 const parseJson = (v) => (typeof v === 'string' ? JSON.parse(v) : v ?? null)
 const OPEN_STAGES_SQL = `l.stage NOT IN ('not_interested', 'junk', 'course_done')`
@@ -431,7 +433,8 @@ const OPEN_FOR_HANDOVER = "l.stage NOT IN ('course_done', 'not_interested', 'jun
 
 /** What this person still has: open leads they own, exams they coordinate. */
 export const handoverSummary = async (actor, userId) => {
-  assertManager(actor)
+  // Read-only: also for Sub-Admins who manage the team (shown before blocking someone)
+  if (!canAssignLeads(actor) && !can(actor, 'can_manage_team')) assertManager(actor)
   const [[u]] = await pool.query('SELECT id, name, role, is_active FROM users WHERE id = ? AND deleted_at IS NULL', [userId])
   if (!u) throw fail(404, 'Team member not found')
   const [[c]] = await pool.query(

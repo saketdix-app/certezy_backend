@@ -45,7 +45,25 @@ export const STAFF_PERMISSIONS = [
   'can_view_payments',
   'can_manage_courses',
   'can_manage_tests',
+  // Sub-Admin feature areas (Team → Permissions)
+  'can_access_crm', // Leads, Follow-ups, By consultant, Sales: work every lead like an Admin
+  'can_assign_leads', // Distribution, assign / transfer leads, hand over
+  'can_view_crm_reports', // CRM Reports (revenue stays Super Admin only)
+  'can_manage_team', // Team: add and manage Consultants and Exam Coordinators
+  'can_manage_batches', // Live batches and their enrollments
 ]
+
+// Permissions that only make sense for Sub-Admins (Consultants work their own leads)
+export const SUB_ADMIN_ONLY_PERMISSIONS = [
+  'can_access_crm',
+  'can_assign_leads',
+  'can_view_crm_reports',
+  'can_manage_team',
+  'can_manage_batches',
+]
+
+// Idle sign-out: a session with no activity for this long ends (minutes)
+export const IDLE_MINUTES = { super_admin: 15, default: 60 }
 
 // Starting permissions when someone becomes a Sub-Admin or Consultant (PRD §3 matrix)
 export const DEFAULT_PERMISSIONS = {

@@ -6,6 +6,9 @@ import * as queries from './auth.queries.js'
 import tokenUtil from '../../utils/token.js'
 import { sendWelcomeJob } from '../../jobs/emailQueue.js'
 import { purgeDateFor, isDeleted } from './userDeletion.js'
+import { pool } from '../../config/db.js'
+import { IDLE_MINUTES, STAFF_PERMISSIONS } from '../../constants.js'
+import { startChallenge, verifyChallenge } from './twoFactor.js'
 const BCRYPT_ROUNDS = 12
 
 const register = async ({ name, email, password }) => {
@@ -67,13 +70,48 @@ const login = async ({ email, password }) => {
     throw err
   }
 
-  const tokens = await generateTokens(user)
+  // Two-step sign-in on: email a code; the session starts once it is entered
+  if (user.two_factor_enabled) {
+    return { two_factor_required: true, ...(await startChallenge(user, 'login')) }
+  }
+  return startSession(user)
+}
 
+/** Password (and code, if two-step is on) checked: issue the session. */
+const startSession = async (user) => {
+  const tokens = await generateTokens(user)
   return {
-    user: sanitizeUser(user),
+    user: await withAccess(sanitizeUser(user)),
     ...tokens,
     isFirstLogin: user.is_first_login === 1,
   }
+}
+
+/** Second step of sign-in: the emailed code. */
+const verifyLogin = async ({ challenge, code }) => {
+  const userId = await verifyChallenge(challenge, code, 'login')
+  const [[user]] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [userId])
+  if (!user || !user.is_active || user.deleted_at) {
+    const err = new Error('Account is deactivated. Contact admin.')
+    err.statusCode = 403
+    throw err
+  }
+  return startSession(user)
+}
+
+/** Minutes without activity before a session ends: Super Admins 15, everyone else 60. */
+const idleLimitSeconds = (role) => (IDLE_MINUTES[role] ?? IDLE_MINUTES.default) * 60
+
+/** What the app needs to show the right menus: two-step status and Sub-Admin permissions. */
+const withAccess = async (user) => {
+  if (!user) return user
+  const out = { ...user, two_factor_enabled: Boolean(user.two_factor_enabled) }
+  if (user.role === 'sub_admin') {
+    const [[row]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [user.id])
+    out.permissions = Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Boolean(row?.[k])]))
+  }
+  out.idle_minutes = IDLE_MINUTES[user.role] ?? IDLE_MINUTES.default
+  return out
 }
 
 const refresh = async (refreshToken) => {
@@ -105,10 +143,18 @@ const refresh = async (refreshToken) => {
     throw err
   }
 
-  await queries.deleteRefreshToken(refreshToken)
+  // No activity for too long: the session is over
+  if (Number(tokenRecord.idle_seconds) > idleLimitSeconds(tokenRecord.role)) {
+    await queries.deleteRefreshToken(refreshToken)
+    const err = new Error(`You were signed out after ${idleLimitSeconds(tokenRecord.role) / 60} minutes without activity`)
+    err.statusCode = 401
+    err.publicCode = 'SESSION_IDLE'
+    throw err
+  }
+
+  // Same session, new tokens (the row keeps its id and last activity)
   const user = await queries.findById(tokenRecord.user_id)
-  const tokens = await generateTokens(user)
-  return tokens
+  return generateTokens(user, tokenRecord.id)
 }
 
 const logout = async (refreshToken) => {
@@ -153,9 +199,17 @@ const oauthLogin = async (user) => {
     err.statusCode = 403
     throw err
   }
+  // Google / GitHub can't do the email-code step: two-step accounts use email + password
+  const [[tf]] = await pool.query('SELECT two_factor_enabled FROM users WHERE id = ? LIMIT 1', [user.id])
+  if (tf?.two_factor_enabled) {
+    const err = new Error('Two-step sign-in is on for this account. Sign in with your email and password.')
+    err.statusCode = 409
+    err.publicCode = 'TWO_FACTOR_REQUIRED'
+    throw err
+  }
   const tokens = await generateTokens(user)
   return {
-    user: sanitizeUser(user),
+    user: await withAccess(sanitizeUser(user)),
     ...tokens,
     isFirstLogin: false,
   }
@@ -250,15 +304,54 @@ const getById = async (id) => {
 
 // ─── HELPERS ─────────────────────────────────────────────────
 
-const generateTokens = async (user) => {
-  const payload = { id: user.id, role: user.role }
-
-  const accessToken = tokenUtil.generateAccessToken(payload)
-  const refreshToken = tokenUtil.generateRefreshToken(payload)
+/**
+ * A session = one refresh_tokens row. The access token carries its id (sid) so
+ * every request can check and record activity (idle sign-out); refreshing keeps
+ * the same session row.
+ */
+const generateTokens = async (user, sessionId = null) => {
+  const refreshToken = tokenUtil.generateRefreshToken({ id: user.id, role: user.role })
   const expiresAt = tokenUtil.getRefreshTokenExpiry()
-
-  await queries.saveRefreshToken({ userId: user.id, token: refreshToken, expiresAt })
+  let sid = sessionId
+  if (sid) await queries.rotateRefreshToken(sid, { token: refreshToken, expiresAt })
+  else sid = await queries.saveRefreshToken({ userId: user.id, token: refreshToken, expiresAt })
+  const accessToken = tokenUtil.generateAccessToken({ id: user.id, role: user.role, sid })
   return { accessToken, refreshToken }
+}
+
+// ── Two-step sign-in settings (Profile → Security) ─────────────────────────
+
+/** Send a code to confirm turning two-step sign-in on. */
+const startTwoFactorSetup = async (actor) => {
+  const [[u]] = await pool.query('SELECT id, name, email, two_factor_enabled FROM users WHERE id = ?', [actor.id])
+  if (u.two_factor_enabled) {
+    const err = new Error('Two-step sign-in is already on')
+    err.statusCode = 409
+    throw err
+  }
+  return startChallenge(u, 'enable')
+}
+
+const enableTwoFactor = async (actor, { challenge, code }) => {
+  const userId = await verifyChallenge(challenge, code, 'enable')
+  if (Number(userId) !== Number(actor.id)) {
+    const err = new Error('This code is for another account')
+    err.statusCode = 403
+    throw err
+  }
+  await pool.query('UPDATE users SET two_factor_enabled = 1, two_factor_enabled_at = UTC_TIMESTAMP() WHERE id = ?', [actor.id])
+  return { two_factor_enabled: true }
+}
+
+const disableTwoFactor = async (actor, { password }) => {
+  const [[u]] = await pool.query('SELECT password FROM users WHERE id = ?', [actor.id])
+  if (!u?.password || !(await bcrypt.compare(String(password ?? ''), u.password))) {
+    const err = new Error('Your password is incorrect')
+    err.statusCode = 401
+    throw err
+  }
+  await pool.query('UPDATE users SET two_factor_enabled = 0, two_factor_enabled_at = NULL WHERE id = ?', [actor.id])
+  return { two_factor_enabled: false }
 }
 
 const sanitizeUser = (user) => {
@@ -269,6 +362,12 @@ const sanitizeUser = (user) => {
 export {
   register,
   login,
+  verifyLogin,
+  withAccess,
+  idleLimitSeconds,
+  startTwoFactorSetup,
+  enableTwoFactor,
+  disableTwoFactor,
   refresh,
   logout,
   changePassword,

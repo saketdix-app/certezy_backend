@@ -28,6 +28,7 @@ const errorHandler = (err, req, res, next) => {
     success: false,
     message,
     ...(err.errors && { errors: err.errors }), // validation errors
+    ...(err.publicCode && { code: err.publicCode }), // e.g. SESSION_IDLE, so the app can explain a sign-out
     ...(err.details && statusCode < 500 && { details: err.details }), // e.g. CRM duplicate matches
     ...(env.isProd ? {} : { stack: err.stack }),
   }

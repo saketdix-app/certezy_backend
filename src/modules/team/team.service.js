@@ -12,9 +12,10 @@
 //     changes their own role or status.
 //   • Every attempt, allowed or refused, goes to the audit log.
 
-import bcrypt from 'bcryptjs'
 import { pool } from '../../config/db.js'
-import { DEFAULT_PERMISSIONS, PRIVILEGES, STAFF_PERMISSIONS, STAFF_ROLES } from '../../constants.js'
+import { DEFAULT_PERMISSIONS, PRIVILEGES, STAFF_PERMISSIONS, STAFF_ROLES, SUB_ADMIN_ONLY_PERMISSIONS } from '../../constants.js'
+import { can } from '../../utils/access.js'
+import { reauthenticate } from '../../utils/reauth.js'
 import { audit } from '../../utils/audit.js'
 import { issuePasswordLink } from '../auth/passwordReset.js'
 import { sendSecurityNoticeJob, sendStaffInviteJob } from '../../jobs/emailQueue.js'
@@ -73,6 +74,8 @@ export const canAssignRole = async (actor, role) => {
     // A disabled admin never gets here (is_active checked above)
     if (role === SUPER) return Boolean(await activeGrant(actor.id, PRIVILEGES.CREATE_SUPER_ADMIN))
   }
+  // Sub-Admins with "Team": Consultants and Exam Coordinators only
+  if (actor.role === 'sub_admin' && can(actor, 'can_manage_team')) return ['consultant', 'exam_coordinator'].includes(role)
   return false
 }
 
@@ -80,18 +83,12 @@ export const canAssignRole = async (actor, role) => {
 const canManage = (actor, target) => {
   if (actor.role === SUPER) return true
   if (actor.role === 'admin') return ['sub_admin', 'consultant', 'exam_coordinator', 'student'].includes(target.role)
+  if (actor.role === 'sub_admin' && can(actor, 'can_manage_team')) return ['consultant', 'exam_coordinator'].includes(target.role)
   return false
 }
 
-export const reauthenticate = async (actor, password) => {
-  const fresh = await getUser(actor.id)
-  if (!fresh?.password) {
-    throw fail(400, 'Set a password on your account (Profile → Password) before making this change')
-  }
-  if (!password || !(await bcrypt.compare(String(password), fresh.password))) {
-    throw fail(401, 'Your password is incorrect')
-  }
-}
+// Same password check everywhere (also used by CRM lead deletion)
+export { reauthenticate }
 
 export const notifySuperAdmins = async (title, lines, exceptId) => {
   for (const sa of await activeSuperAdmins()) {
@@ -228,6 +225,13 @@ export const setPermissions = async (req, id, perms) => {
     throw await denied(req, 'permissions.update', target, "You can't change this person's permissions")
   }
 
+  // CRM / Team / Batches areas are for Sub-Admins only
+  if (target.role !== 'sub_admin') for (const k of SUB_ADMIN_ONLY_PERMISSIONS) perms = { ...perms, [k]: false }
+  // A Sub-Admin can't hand out more than they have themselves
+  if (actor.role === 'sub_admin') {
+    for (const k of STAFF_PERMISSIONS) if (perms[k] && !actor.permissions?.[k]) throw fail(403, "You can't give a permission you don't have")
+  }
+
   await ensurePermissions(target.id, target.role, actor.id)
   const [[before]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [target.id])
   await pool.query(
@@ -315,6 +319,8 @@ export const myCapabilities = async (actor) => {
     can_grant_privileges: actor.role === SUPER,
     can_view_audit: actor.role === SUPER || actor.role === 'admin',
     permission_keys: STAFF_PERMISSIONS,
+    // Shown for Sub-Admins only (Consultants work their own leads)
+    sub_admin_only_keys: SUB_ADMIN_ONLY_PERMISSIONS,
     default_permissions: DEFAULT_PERMISSIONS,
   }
 }

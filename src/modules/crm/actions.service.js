@@ -19,10 +19,11 @@ import { getCompletionStatus, issueCertificate } from '../certificates/certifica
 import { issuePasswordLink } from '../auth/passwordReset.js'
 import { sendStaffInviteJob } from '../../jobs/emailQueue.js'
 import { getLead, normalizeEmail } from './leads.service.js'
+import { isAdmin, isCrmManager } from '../../utils/access.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const MANAGERS = ['super_admin', 'admin']
-const isManager = (actor) => MANAGERS.includes(actor?.role)
+const isManager = (actor) => isCrmManager(actor)
 const INVITE_HOURS = 72
 export const DEFAULT_MAX_DISCOUNT_PCT = 30
 
@@ -59,7 +60,7 @@ export const getMaxDiscountPct = async () => {
 
 /** Admins: the largest discount Consultants and Sub-Admins may give (PRD §7.2). */
 export const setMaxDiscountPct = async (req, pct) => {
-  if (!isManager(req.user)) throw fail(403, 'Only Admins change CRM settings')
+  if (!isAdmin(req.user)) throw fail(403, 'Only Admins change CRM settings')
   await pool.query(
     `INSERT INTO crm_settings (setting, value, updated_by) VALUES ('max_discount_pct', ?, ?)
      ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)`,

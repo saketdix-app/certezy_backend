@@ -19,6 +19,10 @@ const handle = (fn) => async (req, res, next) => {
 }
 
 export const dashboard = handle(async (req, res) => success(res, { data: await service.dashboard(req.user) }))
+export const remove = handle(async (req, res) => {
+  const data = await service.deleteLeads(req, req.body)
+  return success(res, { message: data.deleted === 1 ? 'Lead deleted' : `${data.deleted} leads deleted`, data })
+})
 export const list = handle(async (req, res) => success(res, { data: await service.listLeads(req.user, req.query) }))
 export const get = handle(async (req, res) => success(res, { data: await service.getLead(req.user, req.params.id) }))
 export const owners = handle(async (req, res) => success(res, { data: await service.assignableOwners(req.user) }))

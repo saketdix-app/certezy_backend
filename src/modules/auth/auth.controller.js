@@ -8,6 +8,7 @@ import { requestPasswordReset, checkResetToken, resetPassword } from './password
 import { success } from '../../utils/response.js'
 
 import env from '../../config/env.js'
+import { resendChallenge } from './twoFactor.js'
 
 const cookieOptions = {
   httpOnly: true,
@@ -46,6 +47,13 @@ const login = async (req, res, next) => {
   try {
     const { email, password } = req.body
     const result = await service.login({ email, password })
+    // Two-step sign-in: no session yet — the app asks for the emailed code
+    if (result.two_factor_required) {
+      return success(res, {
+        message: 'Enter the code we emailed you',
+        data: { two_factor_required: true, challenge: result.challenge, email_hint: result.email_hint, expires_in: result.expires_in },
+      })
+    }
     setCookies(res, result)
     return success(res, {
       message: 'Login successful',
@@ -55,6 +63,60 @@ const login = async (req, res, next) => {
     next(err)
   }
 }
+
+// POST /auth/login/verify { challenge, code } — second step of sign-in
+const verifyLogin = async (req, res, next) => {
+  try {
+    const result = await service.verifyLogin(req.body)
+    setCookies(res, result)
+    await audit(req, { action: 'auth.login_2fa', targetType: 'user', targetId: result.user.id }).catch(() => {})
+    return success(res, {
+      message: 'Login successful',
+      data: { user: result.user, isFirstLogin: result.isFirstLogin, accessToken: result.accessToken },
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// POST /auth/login/resend { challenge }
+const resendLoginCode = async (req, res, next) => {
+  try {
+    return success(res, { message: 'A new code is on its way', data: await resendChallenge(req.body.challenge, 'login') })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// Profile → Security: two-step sign-in
+const twoFactorSetup = async (req, res, next) => {
+  try {
+    return success(res, { message: 'We emailed you a code', data: await service.startTwoFactorSetup(req.user) })
+  } catch (err) {
+    next(err)
+  }
+}
+const twoFactorEnable = async (req, res, next) => {
+  try {
+    const data = await service.enableTwoFactor(req.user, req.body)
+    await audit(req, { action: 'auth.2fa_enable', targetType: 'user', targetId: req.user.id })
+    return success(res, { message: 'Two-step sign-in is on', data })
+  } catch (err) {
+    next(err)
+  }
+}
+const twoFactorDisable = async (req, res, next) => {
+  try {
+    const data = await service.disableTwoFactor(req.user, req.body)
+    await audit(req, { action: 'auth.2fa_disable', targetType: 'user', targetId: req.user.id })
+    return success(res, { message: 'Two-step sign-in is off', data })
+  } catch (err) {
+    next(err)
+  }
+}
+
+// POST /auth/activity — the web app's "still here" ping while someone is using a page
+const activity = (req, res) => success(res, { message: 'ok' })
 
 const refresh = async (req, res, next) => {
   try {
@@ -113,6 +175,7 @@ const oauthCallback = async (req, res, next) => {
     return res.redirect(`${env.frontendUrl}/oauth/callback`)
   } catch (err) {
     if (err.statusCode === 403) return res.redirect(`${env.frontendUrl}/login?error=account_deleted`)
+    if (err.publicCode === 'TWO_FACTOR_REQUIRED') return res.redirect(`${env.frontendUrl}/login?error=two_factor`)
     next(err)
   }
 }
@@ -126,7 +189,7 @@ const githubCallback = oauthCallback
 
 const me = async (req, res, next) => {
   try {
-    return success(res, { message: 'User fetched', data: { user: req.user } })
+    return success(res, { message: 'User fetched', data: { user: await service.withAccess(req.user) } })
   } catch (err) {
     next(err)
   }
@@ -259,4 +322,10 @@ export {
   deleteUser,
   restoreDeletedUser,
   eraseDeletedUser,
+  verifyLogin,
+  resendLoginCode,
+  twoFactorSetup,
+  twoFactorEnable,
+  twoFactorDisable,
+  activity,
 }
