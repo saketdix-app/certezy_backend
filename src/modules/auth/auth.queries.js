@@ -39,7 +39,13 @@ const saveRefreshToken = async ({ userId, token, expiresAt, client = null }) => 
 
 /** Refresh rotation keeps the session (same row id): new token, new expiry. */
 const rotateRefreshToken = async (sessionId, { token, expiresAt }) => {
-  await pool.query('UPDATE refresh_tokens SET token = ?, expires_at = ? WHERE id = ?', [token, expiresAt, sessionId])
+  // The previous token is remembered: the Team app may not have received the new one
+  // (phone lost signal / app closed mid-renewal) and retries with the old one
+  await pool.query('UPDATE refresh_tokens SET prev_token = token, token = ?, expires_at = ? WHERE id = ?', [
+    token,
+    expiresAt,
+    sessionId,
+  ])
 }
 
 const findRefreshToken = async (token) => {
@@ -48,15 +54,15 @@ const findRefreshToken = async (token) => {
             TIMESTAMPDIFF(SECOND, COALESCE(rt.last_activity_at, UTC_TIMESTAMP()), UTC_TIMESTAMP()) AS idle_seconds
      FROM refresh_tokens rt
      JOIN users u ON u.id = rt.user_id
-     WHERE rt.token = ? AND rt.expires_at > NOW()
+     WHERE (rt.token = ? OR (rt.client = 'mobile' AND rt.prev_token = ?)) AND rt.expires_at > NOW()
      LIMIT 1`,
-    [token]
+    [token, token]
   )
   return rows[0] || null
 }
 
 const deleteRefreshToken = async (token) => {
-  await pool.query('DELETE FROM refresh_tokens WHERE token = ?', [token])
+  await pool.query('DELETE FROM refresh_tokens WHERE token = ? OR prev_token = ?', [token, token])
 }
 
 const deleteAllRefreshTokens = async (userId) => {

@@ -879,6 +879,14 @@ const STEPS = [
     run: () => addColumnIfMissing('refresh_tokens', 'client', 'VARCHAR(10) NULL'),
   },
   {
+    name: 'refresh_tokens.prev_token (Team app: a renewal lost on a bad network does not sign out)',
+    run: async () => {
+      const added = await addColumnIfMissing('refresh_tokens', 'prev_token', 'VARCHAR(512) NULL')
+      if (added) await pool.query('CREATE INDEX idx_rt_prev_token ON refresh_tokens (prev_token)')
+      return added
+    },
+  },
+  {
     name: 'leads.whatsapp_number (consultant-added WhatsApp; the source phone stays as fetched)',
     run: () => addColumnIfMissing('leads', 'whatsapp_number', 'VARCHAR(30) NULL'),
   },

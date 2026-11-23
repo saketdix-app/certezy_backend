@@ -143,8 +143,8 @@ const refresh = async (refreshToken) => {
     throw err
   }
 
-  // No activity for too long: the session is over (the Team app stays signed in, except Super Admins)
-  const appSession = tokenRecord.client === 'mobile' && tokenRecord.role !== 'super_admin'
+  // No activity for too long: the session is over (the Team app always stays signed in)
+  const appSession = tokenRecord.client === 'mobile'
   if (!appSession && Number(tokenRecord.idle_seconds) > idleLimitSeconds(tokenRecord.role)) {
     await queries.deleteRefreshToken(refreshToken)
     const err = new Error(`You were signed out after ${idleLimitSeconds(tokenRecord.role) / 60} minutes without activity`)
