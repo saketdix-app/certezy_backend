@@ -25,6 +25,9 @@ router.get('/consultants/progress', ...crm, controller.consultantProgress)
 router.get('/leads', ...crmAll, controller.list)
 // My leads I haven't opened since they were assigned (red dot on the tab / menu)
 router.get('/leads/new-count', ...crmAll, controller.newCount)
+// Team app: match the phone's call log to leads on the phone, then record those calls
+router.get('/leads/phone-index', ...crmAll, controller.phoneIndex)
+router.post('/calls/sync', ...crmAll, validate(schemas.callSync), controller.syncCalls)
 // Saved WhatsApp / email messages
 router.get('/templates', ...crmAll, controller.templatesList)
 router.post('/templates', ...crmAll, validate(schemas.messageTemplate), controller.templatesCreate)
