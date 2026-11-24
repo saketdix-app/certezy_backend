@@ -329,7 +329,7 @@ const paymentAlert = (lead) => Boolean(lead.exam_done) && lead.payment_status !=
 /** Stages this actor may move the lead to now (Course Done only comes from Payment Done). */
 const allowedNextStages = (actor, lead) => {
   if (isCoordinator(actor) || !canManageLead(actor, lead)) return []
-  return (TRANSITIONS[lead.stage] ?? []).filter((s) => !CLOSED_STAGES.includes(lead.stage) || isManager(actor))
+  return TRANSITIONS[lead.stage] ?? []
 }
 
 /** Move a lead to a stage as a side effect of another update (timeline says why). */
@@ -352,11 +352,8 @@ export const changeStage = async (req, id, { stage, reason, ticket_size, ticket_
   if (isCoordinator(actor)) throw fail(403, 'Exam coordinators update the exam and payment; the consultant manages the status')
   if (!canManageLead(actor, lead)) throw fail(403, "You can't change this lead's status")
 
+  // The lead's consultant (or an Admin) may move it anywhere, backwards too; reopening needs a reason
   const reopening = CLOSED_STAGES.includes(lead.stage)
-  if (reopening && !isManager(actor)) {
-    await audit(req, { action: 'lead.reopen', targetType: 'lead', targetId: lead.id, result: 'denied', details: { from: lead.stage, to: stage } })
-    throw fail(403, 'Only an Admin can reopen a closed lead')
-  }
   if (!(TRANSITIONS[lead.stage] ?? []).includes(stage)) {
     throw fail(400, `A lead in ${STAGE_LABELS[lead.stage]} can't move to ${STAGE_LABELS[stage]}`)
   }

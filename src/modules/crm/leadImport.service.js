@@ -23,7 +23,7 @@ export const MAX_ROWS = 10000
 const PREVIEW_ROWS = 50
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // Stages an import may set (later stages need a ticket size, exam date or payment)
-const IMPORTABLE_STAGES = ['backlog', 'new', 'attempting_contact', 'in_conversation', 'on_hold', 'not_interested', 'junk']
+const IMPORTABLE_STAGES = ['backlog', 'new', 'attempting_contact', 'in_conversation', 'no_response', 'on_hold', 'not_interested', 'junk']
 const CHUNK = 1000 // rows per batched lookup / insert
 
 /** "Phone Number" → "phonenumber" */
