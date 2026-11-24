@@ -425,6 +425,19 @@ const schemas = {
     // Remark — required when cancelling (the service says so)
     note: Joi.string().trim().max(255).allow('', null).optional(),
   }),
+  callSync: Joi.object({
+    calls: Joi.array()
+      .items(
+        Joi.object({
+          lead_id: Joi.number().integer().positive().required(),
+          direction: Joi.string().valid('incoming', 'outgoing', 'missed', 'rejected').required(),
+          at: Joi.date().iso().required(),
+          duration_sec: Joi.number().integer().min(0).max(86400).default(0),
+        })
+      )
+      .max(200)
+      .required(),
+  }),
   leadActivity: Joi.object({
     type: Joi.string().valid(...LEAD_ACTIVITY_TYPES).required(),
     body: Joi.string().trim().min(1).max(5000).required(),

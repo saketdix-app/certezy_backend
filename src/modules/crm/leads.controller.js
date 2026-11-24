@@ -9,6 +9,7 @@ import * as actions from './actions.service.js'
 import { salesReport } from './sales.service.js'
 import * as reports from './reports.service.js'
 import * as automation from './automation.service.js'
+import * as calls from './calls.service.js'
 import * as whatsappService from '../integrations/whatsapp.service.js'
 import { listTemplates } from '../integrations/whatsapp.adapter.js'
 import { success } from '../../utils/response.js'
@@ -27,6 +28,8 @@ export const importCsv = handle(async (req, res) => {
   return success(res, { message: data.dry_run ? 'File checked' : `${data.created} leads imported`, data })
 })
 export const newCount = handle(async (req, res) => success(res, { data: await service.newLeadsCount(req.user) }))
+export const phoneIndex = handle(async (req, res) => success(res, { data: await calls.phoneIndex(req.user) }))
+export const syncCalls = handle(async (req, res) => success(res, { message: 'Calls recorded', data: await calls.syncCalls(req, req.body) }))
 export const templatesList = handle(async (req, res) => success(res, { data: await templates.listTemplates(req.user) }))
 export const templatesCreate = handle(async (req, res) =>
   success(res, { message: 'Template saved', statusCode: 201, data: await templates.createTemplate(req.user, req.body) })
