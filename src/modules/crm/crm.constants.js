@@ -1,17 +1,18 @@
 // src/modules/crm/crm.constants.js
 // 2.0 Phase 3 — lead pipeline definitions (PRD §4.2, §5).
 
-// The eight stages, in pipeline order
+// The stages, in the order the tabs show them (web and app)
 export const STAGES = [
   // Uploaded in bulk; the consultant works them in when they have time
   'backlog',
   'new',
   'attempting_contact',
   'in_conversation',
-  'on_hold',
   'application',
   'exam_scheduled',
   'course_done',
+  'no_response',
+  'on_hold',
   'not_interested',
   'junk',
 ]
@@ -21,30 +22,23 @@ export const STAGE_LABELS = {
   new: 'New Leads',
   attempting_contact: 'Attempting Contact',
   in_conversation: 'In Conversation',
-  on_hold: 'On Hold',
   application: 'Application',
   exam_scheduled: 'Exam Scheduled',
   course_done: 'Course Done',
+  no_response: 'No Response',
+  on_hold: 'On Hold',
   not_interested: 'Not Interested',
   junk: 'Junk Lead',
 }
 
-// Allowed next stages (PRD §4.2). Closed stages reopen only with a reason,
-// by an Admin or Super Admin. Course Done is never chosen by hand: the lead
-// moves there automatically when its Payment Status is set to Payment Done.
-// Scheduling the exam moves an Application lead to Exam Scheduled.
-export const TRANSITIONS = {
-  backlog: ['attempting_contact', 'not_interested', 'junk'],
-  new: ['attempting_contact', 'junk'],
-  attempting_contact: ['in_conversation', 'on_hold', 'not_interested', 'junk'],
-  in_conversation: ['on_hold', 'application', 'not_interested'],
-  on_hold: ['attempting_contact', 'in_conversation', 'application', 'not_interested'],
-  application: ['exam_scheduled', 'on_hold', 'not_interested'],
-  exam_scheduled: ['application', 'on_hold', 'not_interested'],
-  course_done: [],
-  not_interested: ['attempting_contact', 'in_conversation'], // reopen
-  junk: ['new', 'attempting_contact'], // reopen
-}
+// A lead can move to any other stage, forwards or backwards, including
+// reopening a closed one (with a reason). The one exception: Course Done is
+// never chosen by hand — the lead moves there automatically when its Payment
+// Status is set to Payment Done (a sale is counted then). Every move is
+// recorded in the lead's history: from, to, who and when.
+export const TRANSITIONS = Object.fromEntries(
+  STAGES.map((from) => [from, STAGES.filter((to) => to !== from && to !== 'course_done')])
+)
 
 export const CLOSED_STAGES = ['not_interested', 'junk']
 
@@ -58,7 +52,7 @@ export const EXAM_RESULTS = ['passed', 'failed']
 // Payment Due (default) → Payment Done, which moves the lead to Course Done
 export const PAYMENT_STATUSES = ['due', 'done']
 // Stages where marking Payment Done moves the lead to Course Done
-export const PAYMENT_TO_COURSE_DONE = ['application', 'exam_scheduled', 'on_hold', 'in_conversation']
+export const PAYMENT_TO_COURSE_DONE = ['application', 'exam_scheduled', 'on_hold', 'in_conversation', 'no_response']
 // Stages that need a recorded reason to enter
 export const REASON_REQUIRED = ['not_interested', 'junk', 'on_hold']
 
