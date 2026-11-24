@@ -582,7 +582,8 @@ export const getLead = async (actor, id) => {
 
 // Order per tab: red alerts first on Exam Scheduled, soonest exam first; newest payments on Course Done
 const ORDER_BY = {
-  default: '(l.next_follow_up_at IS NULL), l.next_follow_up_at ASC, l.id DESC',
+  // Newest lead on top (the "Added" time); follow-ups have their own Due today / Overdue views
+  default: 'l.created_at DESC, l.id DESC',
   application: '(l.application_submitted_at IS NULL), l.application_submitted_at DESC, l.stage_changed_at DESC, l.id DESC',
   exam_scheduled: `${PAYMENT_ALERT_SQL} DESC, (l.exam_scheduled_at IS NULL), l.exam_scheduled_at ASC, l.id DESC`,
   course_done: '(l.payment_done_at IS NULL), l.payment_done_at DESC, l.stage_changed_at DESC, l.id DESC',
