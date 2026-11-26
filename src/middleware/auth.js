@@ -11,7 +11,7 @@ const TOUCH_EVERY_SECONDS = 30
 
 /**
  * Idle sign-out. The access token carries its session id (sid). A session with
- * no activity for 15 min (Super Admin) / 60 min (everyone else) is ended.
+ * no activity for 30 min (Super Admin) / 60 min (everyone else) is ended.
  * Background polls (header X-Activity: background) are checked but don't count
  * as activity. Returns an error to send, or null.
  */

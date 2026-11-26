@@ -99,7 +99,7 @@ const verifyLogin = async ({ challenge, code }, { client = null } = {}) => {
   return startSession(user, client)
 }
 
-/** Minutes without activity before a session ends: Super Admins 15, everyone else 60. */
+/** Minutes without activity before a session ends: Super Admins 30, everyone else 60. */
 const idleLimitSeconds = (role) => (IDLE_MINUTES[role] ?? IDLE_MINUTES.default) * 60
 
 /** What the app needs to show the right menus: two-step status and Sub-Admin permissions. */
