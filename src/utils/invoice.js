@@ -3,6 +3,7 @@
 import PDFDocument from 'pdfkit'
 import { uploadFile } from './upload.js'
 import env from '../config/env.js'
+import { fmtIstDate } from './ist.js'
 
 // ── Generate Invoice PDF + Upload to Spaces ────────────────────────────────
 const generateInvoice = ({
@@ -52,7 +53,7 @@ const generateInvoice = ({
         .fontSize(10)
         .font('Helvetica')
         .text(`Invoice No: ${invoiceNumber}`, { align: 'right' })
-        .text(`Date: ${new Date(date).toLocaleDateString('en-IN')}`, { align: 'right' })
+        .text(`Date: ${fmtIstDate(date)}`, { align: 'right' })
         .moveDown(2)
 
       // Company name

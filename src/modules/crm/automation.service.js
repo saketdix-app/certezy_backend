@@ -14,6 +14,7 @@
 import { pool } from '../../config/db.js'
 import { audit } from '../../utils/audit.js'
 import { notify } from '../../utils/notify.js'
+import { fmtIstTime } from '../../utils/ist.js'
 
 export const AUTOMATIONS = ['auto_stage_on_payment', 'auto_course_done', 'abandoned_checkout_nudge', 'follow_up_reminders']
 const EARLY_STAGES = ['backlog', 'new', 'attempting_contact', 'in_conversation', 'no_response', 'on_hold']
@@ -151,7 +152,7 @@ export const runFollowUpReminders = async () => {
     await notify(f.owner_id, {
       type: 'follow_up_due',
       title: `Follow-up due: ${f.name}`,
-      body: `${f.type} at ${new Date(f.due_at).toISOString().slice(11, 16)} UTC`,
+      body: `${f.type} at ${fmtIstTime(f.due_at)}`,
       link: `/consultant/leads?lead=${f.lead_id}`,
     })
     sent++
