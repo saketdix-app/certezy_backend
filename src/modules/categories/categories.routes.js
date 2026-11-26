@@ -5,6 +5,7 @@ import * as controller from './categories.controller.js'
 import authenticate from '../../middleware/auth.js'
 
 import role from '../../middleware/role.js'
+import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
@@ -14,18 +15,20 @@ router.get('/', controller.getAllCategories)
 router.get('/slug/:slug', controller.getCategoryBySlug)
 router.get('/:id', controller.getCategoryById)
 
-// ─── ADMIN ONLY ───────────────────────────────────────────────
+// ─── ADMIN, or SUB-ADMIN with "Create and edit categories" (delete: Admins) ───
 router.post(
   '/create',
   authenticate,
-  role('admin'),
+  role('admin', 'sub_admin'),
+  permission('can_manage_categories'),
   validate(schemas.createCategory),
   controller.createCategory
 )
 router.put(
   '/update/:id',
   authenticate,
-  role('admin'),
+  role('admin', 'sub_admin'),
+  permission('can_manage_categories'),
   validate(schemas.updateCategory),
   controller.updateCategory
 )

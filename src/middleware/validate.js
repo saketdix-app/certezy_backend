@@ -649,7 +649,7 @@ const schemas = {
     outcome: Joi.string().trim().max(500).allow('', null).optional(),
   }),
   teamPermissions: Joi.object(
-    Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Joi.boolean().required()]))
+    Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, Joi.boolean()]))
   ),
   consultantAllocation: Joi.object({
     accepting_leads: Joi.boolean().required(),

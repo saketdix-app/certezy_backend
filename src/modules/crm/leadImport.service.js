@@ -13,7 +13,7 @@ import { parse } from 'csv-parse/sync'
 import { pool } from '../../config/db.js'
 import { audit } from '../../utils/audit.js'
 import { notify } from '../../utils/notify.js'
-import { canAssignLeads, isCrmManager } from '../../utils/access.js'
+import { canAssignLeads, canCrm, isCrmManager } from '../../utils/access.js'
 import { SOURCES, STAGE_LABELS } from './crm.constants.js'
 import { normalizeEmail, normalizePhone } from './leads.service.js'
 import { autoAssign } from './distribution.service.js'
@@ -285,6 +285,7 @@ export const importLeads = async (req, body) => {
   const actor = req.user
   const manager = isCrmManager(actor)
   if (!manager && actor?.role !== 'consultant') throw fail(403, 'Importing leads is for consultants and admins')
+  if (actor?.role === 'sub_admin' && !canCrm(actor, 'can_import_leads')) throw fail(403, 'Importing leads needs that permission — ask an Admin')
   // Consultants import for themselves only
   const ownerMode = manager ? (OWNER_MODES.includes(body.owner_mode) ? body.owner_mode : 'unassigned') : 'me'
   if (['owner', 'round_robin', 'column'].includes(ownerMode) && !canAssignLeads(actor)) {

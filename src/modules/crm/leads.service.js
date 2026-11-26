@@ -22,7 +22,7 @@ import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
 import { getCompletionStatus } from '../certificates/certificates.service.js'
 import { autoAssign } from './distribution.service.js'
-import { isCrmManager } from '../../utils/access.js'
+import { can, canCrm, isCrmManager } from '../../utils/access.js'
 import { reauthenticate } from '../../utils/reauth.js'
 import {
   CLOSED_STAGES,
@@ -1117,7 +1117,7 @@ export const updatePayment = async (req, id, { status, paid_at, reference }) => 
  * their leads per stage and how actively the leads are being worked.
  */
 export const consultantProgress = async (actor) => {
-  if (!isManager(actor)) throw fail(403, 'Only Admins see the team')
+  if (!canCrm(actor, 'can_view_consultant_progress')) throw fail(403, 'By consultant needs that permission — ask an Admin')
   const { start, end } = todayBounds()
   const [people] = await pool.query(
     `SELECT u.id, u.name, u.email, u.role, u.is_active,
@@ -1259,7 +1259,8 @@ export const assignableOwners = async (actor) => {
     )
     return rows
   }
-  if (!isManager(actor)) throw fail(403, 'Only Admins assign leads')
+  // Also for the consultant filter in CRM Reports
+  if (!isManager(actor) && !can(actor, 'can_view_crm_reports')) throw fail(403, 'Only Admins assign leads')
   const [rows] = await pool.query(
     `SELECT u.id, u.name, u.role, cs.accepting_leads,
             (cs.on_leave_until >= CURDATE() AND (cs.on_leave_from IS NULL OR cs.on_leave_from <= CURDATE())) AS on_leave,

@@ -12,9 +12,9 @@ const router = Router()
 
 // ─── ADMIN / SUB-ADMIN ────────────────────────────────────────
 const isAdmin = [authenticate, role('admin', 'sub_admin')]
-router.get('/admin/all', ...isAdmin, controller.getAllEnrollments)
-router.get('/admin/stats', ...isAdmin, controller.getEnrollmentStats)
-router.get('/admin/export', ...isAdmin, controller.exportEnrollments)
+router.get('/admin/all', ...isAdmin, permission('can_view_enrollments'), controller.getAllEnrollments)
+router.get('/admin/stats', ...isAdmin, permission('can_view_enrollments'), controller.getEnrollmentStats)
+router.get('/admin/export', ...isAdmin, permission('can_view_enrollments'), permission('can_export_enrollments'), controller.exportEnrollments)
 
 // Free course assignment — admins, and sub-admins with "manage students"
 const canAssign = [authenticate, role('admin', 'sub_admin'), permission('can_assign_courses')]

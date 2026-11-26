@@ -4,13 +4,14 @@ import { Router } from 'express'
 import * as controller from './admin.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
 
 // ─── DASHBOARD & STATS ─────────────────────────────────────────
-router.get('/dashboard', authenticate, role('admin', 'sub_admin'), controller.getDashboardStats)
-router.get('/stats', authenticate, role('admin', 'sub_admin'), controller.getDashboardStats)
+router.get('/dashboard', authenticate, role('admin', 'sub_admin'), permission('can_view_dashboard'), controller.getDashboardStats)
+router.get('/stats', authenticate, role('admin', 'sub_admin'), permission('can_view_dashboard'), controller.getDashboardStats)
 
 // ─── ADMIN ONLY ───────────────────────────────────────────────
 router.get('/permissions/:userId', authenticate, role('admin'), controller.getPermissions)

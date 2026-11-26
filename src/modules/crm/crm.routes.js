@@ -6,7 +6,7 @@
 import { Router } from 'express'
 import * as controller from './leads.controller.js'
 import authenticate from '../../middleware/auth.js'
-import { crmRoles } from '../../utils/access.js'
+import { crmRoles, crmRolesOr } from '../../utils/access.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
@@ -15,11 +15,13 @@ const router = Router()
 const crm = [authenticate, crmRoles('admin', 'consultant')]
 // Also Exam Coordinators: their leads, notes, WhatsApp, the exam and Course Done
 const crmAll = [authenticate, crmRoles('admin', 'consultant', 'exam_coordinator')]
+// CRM Reports: also Sub-Admins who have only "CRM reports" (no lead access)
+const crmReports = [authenticate, crmRolesOr('can_view_crm_reports', 'admin', 'consultant')]
 
 router.get('/dashboard', ...crmAll, controller.dashboard)
 router.get('/follow-ups', ...crmAll, controller.followUps)
 router.patch('/follow-ups/:id', ...crm, validate(schemas.completeFollowUp), controller.completeFollowUp)
-router.get('/owners', ...crmAll, controller.owners)
+router.get('/owners', authenticate, crmRolesOr('can_view_crm_reports', 'admin', 'consultant', 'exam_coordinator'), controller.owners)
 // Admin → By consultant: leads per consultant, progress and client discussion
 router.get('/consultants/progress', ...crm, controller.consultantProgress)
 router.get('/leads', ...crmAll, controller.list)
@@ -84,11 +86,11 @@ router.get('/automations', ...crm, controller.automationsGet)
 router.put('/automations', ...crm, validate(schemas.automations), controller.automationsSave)
 
 // Reports (Admins; the service checks the role)
-router.get('/reports/overview', ...crm, controller.reportOverview)
-router.get('/reports/leads.csv', ...crm, controller.reportExport)
-router.get('/reports/calls', ...crm, controller.reportCalls)
-router.get('/reports/follow-ups', ...crm, controller.reportFollowUps)
-router.get('/reports/team', ...crm, controller.reportTeam)
+router.get('/reports/overview', ...crmReports, controller.reportOverview)
+router.get('/reports/leads.csv', ...crmReports, controller.reportExport)
+router.get('/reports/calls', ...crmReports, controller.reportCalls)
+router.get('/reports/follow-ups', ...crmReports, controller.reportFollowUps)
+router.get('/reports/team', ...crmReports, controller.reportTeam)
 
 // Distribution (Admins; the service checks the role)
 router.get('/distribution', ...crm, controller.distributionGet)

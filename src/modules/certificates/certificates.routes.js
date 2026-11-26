@@ -19,7 +19,7 @@ router.post('/claim/:courseId', authenticate, role(...LEARNER_ROLES), controller
 
 // ─── ADMIN ────────────────────────────────────────────────────
 router.post('/issue', authenticate, role('admin', 'sub_admin'), permission('can_issue_certificates'), controller.adminIssueCertificate)
-router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllCertificates)
+router.get('/admin/all', authenticate, role('admin', 'sub_admin'), permission('can_view_certificates'), controller.getAllCertificates)
 router.delete('/:id', authenticate, role('admin'), controller.revokeCertificate)
 router.put('/:id', authenticate, role('admin', 'sub_admin'), permission('can_issue_certificates'), controller.regenerateCertificate)
 

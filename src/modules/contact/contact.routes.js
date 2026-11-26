@@ -4,6 +4,7 @@ import { Router } from 'express'
 import * as controller from './contact.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
@@ -20,11 +21,11 @@ router.post(
 )
 
 // ── ADMIN ONLY ─────────────────────────────────────────────────
-router.get('/', authenticate, role('admin', 'sub_admin'), controller.getAll)
+router.get('/', authenticate, role('admin', 'sub_admin'), permission('can_view_contact'), controller.getAll)
 
-router.get('/:id', authenticate, role('admin', 'sub_admin'), controller.getById)
+router.get('/:id', authenticate, role('admin', 'sub_admin'), permission('can_view_contact'), controller.getById)
 
-router.put('/:id/status', authenticate, role('admin', 'sub_admin'), controller.updateStatus)
-router.post('/:id/reply', authenticate, role('admin', 'sub_admin'), controller.reply)
+router.put('/:id/status', authenticate, role('admin', 'sub_admin'), permission('can_view_contact'), permission('can_reply_contact'), controller.updateStatus)
+router.post('/:id/reply', authenticate, role('admin', 'sub_admin'), permission('can_view_contact'), permission('can_reply_contact'), controller.reply)
 
 export default router
