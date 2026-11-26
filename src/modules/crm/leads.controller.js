@@ -8,6 +8,7 @@ import * as distribution from './distribution.service.js'
 import * as actions from './actions.service.js'
 import { salesReport } from './sales.service.js'
 import * as reports from './reports.service.js'
+import * as teamReports from './teamReports.service.js'
 import * as automation from './automation.service.js'
 import * as calls from './calls.service.js'
 import * as whatsappService from '../integrations/whatsapp.service.js'
@@ -171,3 +172,8 @@ export const automationsGet = handle(async (req, res) => success(res, { data: aw
 export const automationsSave = handle(async (req, res) =>
   success(res, { message: 'Saved', data: await automation.setAutomations(req, req.body) })
 )
+
+// CRM → Reports: calls, assigned leads vs follow-up, team board
+export const reportCalls = handle(async (req, res) => success(res, { data: await teamReports.callReport(req.user, req.query) }))
+export const reportFollowUps = handle(async (req, res) => success(res, { data: await teamReports.followUpReport(req.user, req.query) }))
+export const reportTeam = handle(async (req, res) => success(res, { data: await teamReports.teamBoard(req.user, req.query) }))

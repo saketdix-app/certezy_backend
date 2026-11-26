@@ -80,6 +80,9 @@ router.put('/automations', ...crm, validate(schemas.automations), controller.aut
 // Reports (Admins; the service checks the role)
 router.get('/reports/overview', ...crm, controller.reportOverview)
 router.get('/reports/leads.csv', ...crm, controller.reportExport)
+router.get('/reports/calls', ...crm, controller.reportCalls)
+router.get('/reports/follow-ups', ...crm, controller.reportFollowUps)
+router.get('/reports/team', ...crm, controller.reportTeam)
 
 // Distribution (Admins; the service checks the role)
 router.get('/distribution', ...crm, controller.distributionGet)
