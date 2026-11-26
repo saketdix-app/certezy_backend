@@ -1,7 +1,7 @@
 // src/utils/upload.js
 // Thin wrapper around AWS S3 used for admin uploads, certificates and invoices.
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import env from '../config/env.js'
 
@@ -97,6 +97,40 @@ const generatePresignedUrl = async ({ key, mimeType, isPublic = true, expiresIn 
   }
 }
 
+// ── Private files (call recordings): never public, only short-lived signed links ──
+/** Signed PUT for a private object. The uploader must send exactly `headers`. */
+const presignPrivatePut = async ({ key, mimeType, expiresIn = 900 }) => {
+  const command = new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: mimeType, ...aclFor(false) })
+  return {
+    signedUrl: await getSignedUrl(getClient(), command, { expiresIn }),
+    headers: { 'Content-Type': mimeType, ...(cfg.useAcl && { 'x-amz-acl': 'private' }) },
+  }
+}
+
+/** Size of a stored object, or null if it isn't there. */
+const objectSize = async (key) => {
+  try {
+    const head = await getClient().send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }))
+    return Number(head.ContentLength ?? 0)
+  } catch (err) {
+    if (err?.$metadata?.httpStatusCode === 404 || err?.name === 'NotFound') return null
+    throw err
+  }
+}
+
+/** Short-lived signed GET; `downloadName` makes the browser save it instead of playing. */
+const presignPrivateGet = async ({ key, expiresIn = 600, downloadName, mimeType }) =>
+  getSignedUrl(
+    getClient(),
+    new GetObjectCommand({
+      Bucket: cfg.bucket,
+      Key: key,
+      ...(mimeType && { ResponseContentType: mimeType }),
+      ...(downloadName && { ResponseContentDisposition: `attachment; filename="${downloadName.replace(/[^\w.\- ]/g, '_')}"` }),
+    }),
+    { expiresIn }
+  )
+
 // ── Connectivity check for the admin status endpoint ──────────────────────
 const checkStorage = async () => {
   const info = {
@@ -125,4 +159,7 @@ export {
   checkStorage,
   isConfigured,
   isOwnUploadUrl,
+  presignPrivatePut,
+  presignPrivateGet,
+  objectSize,
 }

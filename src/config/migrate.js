@@ -953,6 +953,36 @@ const STEPS = [
       return true
     },
   },
+  {
+    name: 'lead_call_recordings (lead call recordings from the Team app, private in S3; Super Admins only)',
+    run: async () => {
+      if (await tableExists('lead_call_recordings')) return false
+      await pool.query(`
+        CREATE TABLE lead_call_recordings (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          lead_id      INT NOT NULL,
+          user_id      INT NOT NULL,
+          call_at      DATETIME NOT NULL,
+          direction    VARCHAR(20) NULL,
+          duration_sec INT NOT NULL DEFAULT 0,
+          file_name    VARCHAR(255) NOT NULL,
+          size_bytes   BIGINT NOT NULL,
+          mime         VARCHAR(80) NOT NULL,
+          s3_key       VARCHAR(400) NOT NULL,
+          status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+          uploaded_at  DATETIME NULL,
+          deleted_at   DATETIME NULL,
+          deleted_by   INT NULL,
+          created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_rec_file (user_id, file_name(150), size_bytes),
+          INDEX idx_rec_call (call_at),
+          INDEX idx_rec_lead (lead_id),
+          INDEX idx_rec_user (user_id, call_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
 ]
 
 /**
