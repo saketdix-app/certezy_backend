@@ -59,6 +59,9 @@ export const normalizeEmail = (email) => {
 }
 
 const toSqlDate = (value) => new Date(value).toISOString().slice(0, 19).replace('T', ' ')
+// "2026-11-26" means that day in IST (midnight IST = 18:30 UTC the day before)
+const istDayStart = (d) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? new Date(`${d}T00:00:00+05:30`) : new Date(d)
 const sqlToIso = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toISOString()
 
 /** Start and end (UTC) of "today" in the business timezone. */
@@ -614,8 +617,13 @@ export const listLeads = async (actor, q = {}) => {
   }
   if (q.source) add('l.source = ?', q.source)
   if (q.course_id) add('l.course_id = ?', q.course_id)
-  if (q.from) add('l.created_at >= ?', toSqlDate(q.from))
-  if (q.to) add('l.created_at < ?', toSqlDate(new Date(new Date(q.to).getTime() + 86400e3)))
+  // Lead added: last 1 / 3 / 7 days, or a custom range of IST dates
+  const ADDED_DAYS = { '1d': 1, '3d': 3, '7d': 7 }
+  if (ADDED_DAYS[q.added]) add('l.created_at >= ?', toSqlDate(Date.now() - ADDED_DAYS[q.added] * 86400e3))
+  const fromDay = q.from && istDayStart(q.from)
+  const toDay = q.to && istDayStart(q.to)
+  if (fromDay && !isNaN(fromDay)) add('l.created_at >= ?', toSqlDate(fromDay))
+  if (toDay && !isNaN(toDay)) add('l.created_at < ?', toSqlDate(toDay.getTime() + 86400e3))
   // Consultant filter: Admins, and coordinators (among their own students)
   if ((isManager(actor) || isCoordinator(actor)) && q.owner_id) {
     if (q.owner_id === 'unassigned') where.push('l.owner_id IS NULL')
