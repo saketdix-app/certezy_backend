@@ -599,6 +599,9 @@ const DISCUSSION_IN = DISCUSSION_TYPES.map((t) => `'${t}'`).join(', ')
 const SORTS = {
   recent_discussion: '(ld.id IS NULL), ld.id DESC, l.id DESC',
   quiet_first: '(ld.id IS NOT NULL), ld.created_at ASC, l.id DESC',
+  // Sort arrow on the leads list: by when the lead was added
+  newest: 'l.created_at DESC, l.id DESC',
+  oldest: 'l.created_at ASC, l.id ASC',
 }
 
 export const listLeads = async (actor, q = {}) => {
@@ -713,7 +716,7 @@ export const listLeads = async (actor, q = {}) => {
        SELECT MAX(a.id) FROM lead_activities a WHERE a.lead_id = l.id AND a.type IN (${DISCUSSION_IN}))
      LEFT JOIN users ldu ON ldu.id = ld.actor_id
      WHERE ${where.join(' AND ')}
-     ORDER BY ${SORTS[q.sort] ?? ORDER_BY[q.stage] ?? ORDER_BY.default}
+     ORDER BY ${(Object.hasOwn(SORTS, q.sort) && SORTS[q.sort]) || (Object.hasOwn(ORDER_BY, q.stage) && ORDER_BY[q.stage]) || ORDER_BY.default}
      LIMIT ? OFFSET ?`,
     [...values, limit, (page - 1) * limit]
   )
