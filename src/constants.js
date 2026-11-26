@@ -63,7 +63,7 @@ export const SUB_ADMIN_ONLY_PERMISSIONS = [
 ]
 
 // Idle sign-out: a session with no activity for this long ends (minutes)
-export const IDLE_MINUTES = { super_admin: 15, default: 60 }
+export const IDLE_MINUTES = { super_admin: 30, default: 60 }
 // CERTEZY Team app: stays signed in like other phone apps — no idle sign-out
 // (except Super Admins), and the session renews itself for this many days
 export const MOBILE_SESSION_DAYS = 90
