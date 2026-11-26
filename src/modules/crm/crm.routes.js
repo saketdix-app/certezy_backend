@@ -28,6 +28,12 @@ router.get('/leads/new-count', ...crmAll, controller.newCount)
 // Team app: match the phone's call log to leads on the phone, then record those calls
 router.get('/leads/phone-index', ...crmAll, controller.phoneIndex)
 router.post('/calls/sync', ...crmAll, validate(schemas.callSync), controller.syncCalls)
+// Call recordings: the Team app uploads its own leads' recordings; Super Admins only for the rest (checked in the service)
+router.post('/recordings', ...crmAll, validate(schemas.recordingStart), controller.recordingStart)
+router.post('/recordings/:id/done', ...crmAll, controller.recordingDone)
+router.get('/recordings', ...crm, controller.recordingList)
+router.get('/recordings/:id/link', ...crm, controller.recordingLink)
+router.delete('/recordings/:id', ...crm, controller.recordingDelete)
 // Saved WhatsApp / email messages
 router.get('/templates', ...crmAll, controller.templatesList)
 router.post('/templates', ...crmAll, validate(schemas.messageTemplate), controller.templatesCreate)

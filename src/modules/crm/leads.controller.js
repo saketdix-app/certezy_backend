@@ -11,6 +11,7 @@ import * as reports from './reports.service.js'
 import * as teamReports from './teamReports.service.js'
 import * as automation from './automation.service.js'
 import * as calls from './calls.service.js'
+import * as recordings from './recordings.service.js'
 import * as whatsappService from '../integrations/whatsapp.service.js'
 import { listTemplates } from '../integrations/whatsapp.adapter.js'
 import { success } from '../../utils/response.js'
@@ -177,3 +178,12 @@ export const automationsSave = handle(async (req, res) =>
 export const reportCalls = handle(async (req, res) => success(res, { data: await teamReports.callReport(req.user, req.query) }))
 export const reportFollowUps = handle(async (req, res) => success(res, { data: await teamReports.followUpReport(req.user, req.query) }))
 export const reportTeam = handle(async (req, res) => success(res, { data: await teamReports.teamBoard(req.user, req.query) }))
+
+// Lead call recordings: the Team app uploads; only Super Admins list / play / download / delete
+export const recordingStart = handle(async (req, res) => success(res, { data: await recordings.startUpload(req, req.body) }))
+export const recordingDone = handle(async (req, res) => success(res, { data: await recordings.finishUpload(req, Number(req.params.id)) }))
+export const recordingList = handle(async (req, res) => success(res, { data: await recordings.listRecordings(req.user, req.query) }))
+export const recordingLink = handle(async (req, res) =>
+  success(res, { data: await recordings.recordingLink(req, Number(req.params.id), { download: req.query.download === '1' }) })
+)
+export const recordingDelete = handle(async (req, res) => success(res, { data: await recordings.deleteRecording(req, Number(req.params.id)) }))

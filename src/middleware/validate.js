@@ -425,6 +425,15 @@ const schemas = {
     // Remark — required when cancelling (the service says so)
     note: Joi.string().trim().max(255).allow('', null).optional(),
   }),
+  recordingStart: Joi.object({
+    lead_id: Joi.number().integer().positive().required(),
+    call_at: Joi.date().iso().required(),
+    direction: Joi.string().valid('incoming', 'outgoing').allow(null),
+    duration_sec: Joi.number().integer().min(0).max(86400).default(0),
+    file_name: Joi.string().trim().max(255).required(),
+    size_bytes: Joi.number().integer().min(1).max(100 * 1024 * 1024).required(),
+    mime: Joi.string().trim().max(80).default('audio/mp4'),
+  }),
   callSync: Joi.object({
     calls: Joi.array()
       .items(

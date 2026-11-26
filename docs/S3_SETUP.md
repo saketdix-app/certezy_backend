@@ -117,3 +117,20 @@ Create a CloudFront distribution with the bucket as origin (Origin Access Contro
 and set `S3_PUBLIC_URL=https://<distribution>.cloudfront.net`. You can then remove the
 public bucket policy from step 2 and grant CloudFront read access instead. Files
 uploaded before the switch keep their old S3 URLs.
+
+## Call recordings (private)
+
+The CERTEZY Team app uploads recordings of lead calls (made by the phone's own
+dialer) to `call-recordings/YYYY/MM/u<consultant>/…` in the same bucket.
+
+- They must **not** be public: keep `call-recordings/*` **out** of the bucket
+  policy in step 2 (the policy above only opens `uploads/`, `certificates/` and
+  `invoices/`).
+- The phone uploads straight to S3 with a 15-minute signed link; Super Admins
+  play / download with a 10-minute signed link from Admin → Call recordings.
+  Every play, download and delete is written to the audit log.
+- No extra IAM or CORS setup: the role above already allows Put / Get / Delete
+  on the bucket, and the phone upload isn't a browser request.
+- Optional: an S3 Lifecycle rule on the `call-recordings/` prefix (e.g. move to
+  Glacier Instant Retrieval after 90 days, or expire after a year) keeps storage
+  costs down.
