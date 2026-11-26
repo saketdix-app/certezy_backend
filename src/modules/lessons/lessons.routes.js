@@ -4,6 +4,7 @@ import { Router } from 'express'
 import * as controller from './lessons.controller.js'
 import authenticate from '../../middleware/auth.js'
 import role from '../../middleware/role.js'
+import permission from '../../middleware/permission.js'
 import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
@@ -22,6 +23,7 @@ router.post(
   '/create',
   authenticate,
   role('admin', 'sub_admin'),
+  permission('can_manage_courses'),
   validate(schemas.createLesson),
   controller.createLesson
 )
@@ -29,9 +31,10 @@ router.put(
   '/update/:id',
   authenticate,
   role('admin', 'sub_admin'),
+  permission('can_manage_courses'),
   validate(schemas.updateLesson),
   controller.updateLesson
 )
-router.delete('/delete/:id', authenticate, role('admin', 'sub_admin'), controller.deleteLesson)
+router.delete('/delete/:id', authenticate, role('admin', 'sub_admin'), permission('can_manage_courses'), controller.deleteLesson)
 
 export default router

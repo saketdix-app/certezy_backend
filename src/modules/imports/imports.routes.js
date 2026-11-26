@@ -15,7 +15,7 @@ import { validate, schemas } from '../../middleware/validate.js'
 
 const router = Router()
 
-const admin = [authenticate, role('admin', 'sub_admin')]
+const admin = [authenticate, role('admin', 'sub_admin'), permission('can_bulk_import')]
 // Quizzes are test content; everything else is course content
 const permissionFor = (req, res, next) =>
   permission(req.params.type === 'quizzes' ? 'can_manage_tests' : 'can_manage_courses')(req, res, next)

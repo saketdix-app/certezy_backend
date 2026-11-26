@@ -14,11 +14,11 @@ const router = Router()
 const approvalSchema = Joi.object({ is_approved: Joi.number().integer().valid(0, 1).required() })
 
 // ─── ADMIN ────────────────────────────────────────────────────
-router.get('/admin/all', authenticate, role('admin', 'sub_admin'), controller.getAllReviews)
-router.get('/admin/pending', authenticate, role('admin', 'sub_admin'), controller.getPendingReviews)
-router.get('/admin/sources', authenticate, role('admin', 'sub_admin'), controller.getSources)
+router.get('/admin/all', authenticate, role('admin', 'sub_admin'), permission('can_view_reviews'), controller.getAllReviews)
+router.get('/admin/pending', authenticate, role('admin', 'sub_admin'), permission('can_view_reviews'), controller.getPendingReviews)
+router.get('/admin/sources', authenticate, role('admin', 'sub_admin'), permission('can_view_reviews'), controller.getSources)
 // Genuine reviews collected outside the site (classroom, corporate, other platforms…)
-const canEnterReviews = [authenticate, role('admin', 'sub_admin'), permission('can_manage_courses')]
+const canEnterReviews = [authenticate, role('admin', 'sub_admin'), permission('can_manage_reviews')]
 router.post('/admin', ...canEnterReviews, validate(schemas.createAdminReview), controller.createAdminReview)
 router.put(
   '/admin/:id',
@@ -30,6 +30,7 @@ router.put(
   '/:id/approval',
   authenticate,
   role('admin', 'sub_admin'),
+  permission('can_manage_reviews'),
   validate(approvalSchema),
   controller.updateApprovalStatus
 )

@@ -13,7 +13,7 @@ import { pool } from '../../config/db.js'
 import { notify } from '../../utils/notify.js'
 import { SALE_ATTRIBUTION } from './crm.constants.js'
 import { onSale } from './automation.service.js'
-import { isCrmManager } from '../../utils/access.js'
+import { canCrm, isCrmManager } from '../../utils/access.js'
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode })
 const MANAGERS = ['super_admin', 'admin']
@@ -130,6 +130,7 @@ export const salesReport = async (actor, q = {}) => {
 
 const buildSalesReport = async (actor, { from, to, owner_id } = {}) => {
   if (!isManager(actor) && actor?.role !== 'consultant') throw fail(403, 'Sales reports are for consultants and admins')
+  if (actor?.role === 'sub_admin' && !canCrm(actor, 'can_view_sales')) throw fail(403, 'Sales needs that permission — ask an Admin')
   const owners = ownerScope(actor, owner_id)
   const start = from ? toSql(from) : toSql(Date.now() - 30 * 86400e3)
   const end = to ? toSql(new Date(to).getTime() + 86400e3) : toSql(Date.now() + 60e3)

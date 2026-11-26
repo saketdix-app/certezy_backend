@@ -45,21 +45,88 @@ export const STAFF_PERMISSIONS = [
   'can_view_payments',
   'can_manage_courses',
   'can_manage_tests',
-  // Sub-Admin feature areas (Team → Permissions)
-  'can_access_crm', // Leads, Follow-ups, By consultant, Sales: work every lead like an Admin
-  'can_assign_leads', // Distribution, assign / transfer leads, hand over
-  'can_view_crm_reports', // CRM Reports (revenue stays Super Admin only)
+  // Sub-Admin tabs and options (Team → Permissions)
+  'can_view_dashboard',
+  'can_access_crm', // CRM: Leads and Follow-ups — work every lead like an Admin (needed for the CRM tabs below)
+  'can_view_consultant_progress', // CRM: By consultant
+  'can_view_sales', // CRM: Sales (revenue stays Super Admin only)
+  'can_import_leads', // CRM: Import leads from a CSV
+  'can_assign_leads', // CRM: Distribution, assign / transfer leads, hand over
+  'can_view_crm_reports', // CRM Reports (works without lead access; revenue stays Super Admin only)
+  'can_view_courses',
+  'can_view_categories',
+  'can_manage_categories',
+  'can_view_enrollments',
+  'can_export_enrollments',
+  'can_view_certificates',
+  'can_view_reviews',
+  'can_manage_reviews',
+  'can_bulk_import',
+  'can_view_discounts',
+  'can_view_contact',
+  'can_reply_contact',
   'can_manage_team', // Team: add and manage Consultants and Exam Coordinators
   'can_manage_batches', // Live batches and their enrollments
 ]
 
-// Permissions that only make sense for Sub-Admins (Consultants work their own leads)
-export const SUB_ADMIN_ONLY_PERMISSIONS = [
-  'can_access_crm',
-  'can_assign_leads',
-  'can_view_crm_reports',
-  'can_manage_team',
-  'can_manage_batches',
+// Consultants can only get these (used from a lead: assign a course, send a discount link, issue a certificate)
+export const CONSULTANT_PERMISSIONS = ['can_assign_courses', 'can_send_discounts', 'can_issue_certificates']
+// Everything else is for Sub-Admins only
+export const SUB_ADMIN_ONLY_PERMISSIONS = STAFF_PERMISSIONS.filter((k) => !CONSULTANT_PERMISSIONS.includes(k) && k !== 'can_manage_students' && k !== 'can_view_payments' && k !== 'can_manage_courses' && k !== 'can_manage_tests')
+
+/**
+ * Team → Permissions for Sub-Admins: every admin tab, by menu section. `open`
+ * shows the tab; `options` are what they can do inside it (only with `open`).
+ * `needs`: another permission the tab works on top of. `locked`: only Admins /
+ * Super Admins, shown so it's clear. The website builds the screen from this.
+ */
+export const PERMISSION_CATALOG = [
+  { key: 'overview', label: 'Overview', tabs: [{ label: 'Dashboard', open: 'can_view_dashboard' }] },
+  {
+    key: 'crm',
+    label: 'CRM',
+    tabs: [
+      { label: 'Leads & Follow-ups', open: 'can_access_crm', options: ['can_import_leads'] },
+      { label: 'By consultant', open: 'can_view_consultant_progress', needs: 'can_access_crm' },
+      { label: 'Distribution', open: 'can_assign_leads', needs: 'can_access_crm' },
+      { label: 'Sales', open: 'can_view_sales', needs: 'can_access_crm' },
+      { label: 'CRM Reports', open: 'can_view_crm_reports' },
+      { label: 'Call recordings', locked: 'Super Admins only' },
+    ],
+  },
+  {
+    key: 'learning',
+    label: 'Learning',
+    tabs: [
+      { label: 'Courses', open: 'can_view_courses', options: ['can_manage_courses', 'can_manage_tests'] },
+      { label: 'Categories', open: 'can_view_categories', options: ['can_manage_categories'] },
+      { label: 'Enrollments', open: 'can_view_enrollments', options: ['can_export_enrollments'] },
+      { label: 'Assign Courses', open: 'can_assign_courses' },
+      { label: 'Live batches', open: 'can_manage_batches' },
+      { label: 'Certificates', open: 'can_view_certificates', options: ['can_issue_certificates'] },
+      { label: 'Reviews', open: 'can_view_reviews', options: ['can_manage_reviews'] },
+      { label: 'Bulk Import', open: 'can_bulk_import', note: 'Courses need "Create and edit courses"; quizzes need "Tests and quizzes"' },
+    ],
+  },
+  {
+    key: 'payments',
+    label: 'Payments',
+    tabs: [
+      { label: 'Payments', open: 'can_view_payments' },
+      { label: 'Discounts', open: 'can_view_discounts', options: ['can_send_discounts'] },
+      { label: 'Lead discount links', open: 'can_access_crm', shared: true },
+    ],
+  },
+  {
+    key: 'settings',
+    label: 'Settings',
+    tabs: [
+      { label: 'Users', open: 'can_manage_students' },
+      { label: 'Team', open: 'can_manage_team' },
+      { label: 'Contact messages', open: 'can_view_contact', options: ['can_reply_contact'] },
+      { label: 'Integrations', locked: 'Admins only' },
+    ],
+  },
 ]
 
 // Idle sign-out: a session with no activity for this long ends (minutes)
@@ -70,7 +137,18 @@ export const MOBILE_SESSION_DAYS = 90
 
 // Starting permissions when someone becomes a Sub-Admin or Consultant (PRD §3 matrix)
 export const DEFAULT_PERMISSIONS = {
-  sub_admin: ['can_assign_courses', 'can_send_discounts', 'can_issue_certificates', 'can_manage_students'],
+  sub_admin: [
+    'can_view_dashboard',
+    'can_view_courses',
+    'can_view_categories',
+    'can_view_enrollments',
+    'can_view_certificates',
+    'can_assign_courses',
+    'can_view_discounts',
+    'can_send_discounts',
+    'can_issue_certificates',
+    'can_manage_students',
+  ],
   consultant: ['can_assign_courses', 'can_send_discounts', 'can_issue_certificates'],
 }
 

@@ -13,7 +13,7 @@
 //   • Every attempt, allowed or refused, goes to the audit log.
 
 import { pool } from '../../config/db.js'
-import { DEFAULT_PERMISSIONS, PRIVILEGES, STAFF_PERMISSIONS, STAFF_ROLES, SUB_ADMIN_ONLY_PERMISSIONS } from '../../constants.js'
+import { DEFAULT_PERMISSIONS, PERMISSION_CATALOG, PRIVILEGES, STAFF_PERMISSIONS, STAFF_ROLES, SUB_ADMIN_ONLY_PERMISSIONS } from '../../constants.js'
 import { can } from '../../utils/access.js'
 import { reauthenticate } from '../../utils/reauth.js'
 import { audit } from '../../utils/audit.js'
@@ -225,15 +225,17 @@ export const setPermissions = async (req, id, perms) => {
     throw await denied(req, 'permissions.update', target, "You can't change this person's permissions")
   }
 
-  // CRM / Team / Batches areas are for Sub-Admins only
+  await ensurePermissions(target.id, target.role, actor.id)
+  const [[before]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [target.id])
+  // Permissions not sent keep their value (e.g. an older screen that doesn't know a new one)
+  perms = Object.fromEntries(STAFF_PERMISSIONS.map((k) => [k, k in (perms ?? {}) ? Boolean(perms[k]) : Boolean(before?.[k])]))
+  // Admin tabs are for Sub-Admins only
   if (target.role !== 'sub_admin') for (const k of SUB_ADMIN_ONLY_PERMISSIONS) perms = { ...perms, [k]: false }
   // A Sub-Admin can't hand out more than they have themselves
   if (actor.role === 'sub_admin') {
-    for (const k of STAFF_PERMISSIONS) if (perms[k] && !actor.permissions?.[k]) throw fail(403, "You can't give a permission you don't have")
+    for (const k of STAFF_PERMISSIONS) if (perms[k] && !before?.[k] && !actor.permissions?.[k]) throw fail(403, "You can't give a permission you don't have")
   }
 
-  await ensurePermissions(target.id, target.role, actor.id)
-  const [[before]] = await pool.query('SELECT * FROM admin_permissions WHERE user_id = ? LIMIT 1', [target.id])
   await pool.query(
     `UPDATE admin_permissions SET ${STAFF_PERMISSIONS.map((k) => `${k} = ?`).join(', ')} WHERE user_id = ?`,
     [...STAFF_PERMISSIONS.map((k) => (perms[k] ? 1 : 0)), target.id]
@@ -322,6 +324,7 @@ export const myCapabilities = async (actor) => {
     // Shown for Sub-Admins only (Consultants work their own leads)
     sub_admin_only_keys: SUB_ADMIN_ONLY_PERMISSIONS,
     default_permissions: DEFAULT_PERMISSIONS,
+    permission_catalog: PERMISSION_CATALOG,
   }
 }
 

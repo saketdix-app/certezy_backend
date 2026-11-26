@@ -17,7 +17,7 @@ router.post(
   permission('can_send_discounts'),
   controller.createDiscountLink
 )
-router.get('/', authenticate, role('admin', 'sub_admin'), controller.getAllDiscounts)
+router.get('/', authenticate, role('admin', 'sub_admin'), permission('can_view_discounts'), controller.getAllDiscounts)
 router.post(
   '/:id/resend',
   authenticate,

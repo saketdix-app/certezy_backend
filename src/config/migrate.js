@@ -841,6 +841,41 @@ const STEPS = [
     },
   },
   {
+    name: 'admin_permissions: a permission for every admin tab and its options — Sub-Admins keep what they could do',
+    run: async () => {
+      // value for existing Sub-Admins: what they could already do before this change
+      const cols = {
+        can_view_dashboard: '1',
+        can_view_consultant_progress: 'can_access_crm',
+        can_view_sales: 'can_access_crm',
+        can_import_leads: 'can_access_crm',
+        can_view_courses: '1',
+        can_view_categories: '1',
+        can_manage_categories: '0', // was Admins only
+        can_view_enrollments: '1',
+        can_export_enrollments: '1',
+        can_view_certificates: '1',
+        can_view_reviews: '1',
+        can_manage_reviews: '1', // approving reviews was open to every Sub-Admin
+        can_bulk_import: '1',
+        can_view_discounts: '1',
+        can_view_contact: '1',
+        can_reply_contact: '1',
+      }
+      const added = []
+      for (const col of Object.keys(cols)) {
+        if (await addColumnIfMissing('admin_permissions', col, 'TINYINT(1) NOT NULL DEFAULT 0')) added.push(col)
+      }
+      if (added.length) {
+        await pool.query(
+          `UPDATE admin_permissions p JOIN users u ON u.id = p.user_id SET ${added.map((c) => `p.${c} = ${cols[c] === '1' || cols[c] === '0' ? cols[c] : `p.${cols[c]}`}`).join(', ')}
+           WHERE u.role = 'sub_admin'`
+        )
+      }
+      return added.length > 0
+    },
+  },
+  {
     name: 'refresh_tokens.last_activity_at (idle sign-out)',
     run: async () => {
       const added = await addColumnIfMissing('refresh_tokens', 'last_activity_at', 'DATETIME NULL')

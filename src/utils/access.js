@@ -13,6 +13,9 @@ export const can = (actor, key) => isAdmin(actor) || (actor?.role === 'sub_admin
 /** Works every lead like an Admin: Admins, and Sub-Admins with CRM access. */
 export const isCrmManager = (actor) => can(actor, 'can_access_crm')
 
+/** A CRM option (By consultant, Sales, Import…): needs CRM access too. Admins always. */
+export const canCrm = (actor, key) => isAdmin(actor) || (isCrmManager(actor) && can(actor, key))
+
 /** Assigns / transfers leads and runs distribution. */
 export const canAssignLeads = (actor) => isAdmin(actor) || (isCrmManager(actor) && can(actor, 'can_assign_leads'))
 
@@ -23,10 +26,16 @@ export const allow = (key) => (req, res, next) => {
   return next(Object.assign(new Error('Access denied — ask an Admin for this permission'), { statusCode: 403 }))
 }
 
-/** Route guard for the CRM: these roles, or a Sub-Admin with CRM access. */
+/**
+ * Route guard for the CRM: these roles, or a Sub-Admin with CRM access — or,
+ * with `alsoPermission`, a Sub-Admin with just that permission (e.g. CRM
+ * reports without lead access). The services check the details.
+ */
 export const crmRoles = (...roles) => (req, res, next) => {
   const r = req.user?.role
   if (!r) return next(Object.assign(new Error('Unauthorized'), { statusCode: 401 }))
   if (roles.includes(r) || (r === 'super_admin' && roles.includes('admin')) || isCrmManager(req.user)) return next()
   return next(Object.assign(new Error('Access denied — insufficient permissions'), { statusCode: 403 }))
 }
+export const crmRolesOr = (permission, ...roles) => (req, res, next) =>
+  can(req.user, permission) ? next() : crmRoles(...roles)(req, res, next)
