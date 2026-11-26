@@ -16,6 +16,7 @@
 //     progress are tracked separately; certificates still need completion.
 
 import { pool } from '../../config/db.js'
+import { fmtIst } from '../../utils/ist.js'
 import { managerIds, notify } from '../../utils/notify.js'
 import env from '../../config/env.js'
 import { audit } from '../../utils/audit.js'
@@ -952,7 +953,7 @@ export const updateExam = async (req, id, { status, scheduled_at, note }) => {
       await notify(others, {
         type: 'exam_schedule',
         title: `${lead.name}: exam cancelled${backToApplication ? ' — back to Application' : ''}`,
-        body: `${prevAt ? `Was on ${new Date(sqlToIso(prevAt)).toUTCString().slice(0, 22)} UTC. ` : ''}Remark: ${remark}`,
+        body: `${prevAt ? `Was on ${fmtIst(sqlToIso(prevAt))}. ` : ''}Remark: ${remark}`,
         link: `/consultant/leads?lead=${lead.id}`,
       })
     }
@@ -1003,7 +1004,7 @@ export const updateExam = async (req, id, { status, scheduled_at, note }) => {
     await notify(others, {
       type: 'exam_schedule',
       title: `${lead.name}: exam ${moved ? 'rescheduled' : 'scheduled'}`,
-      body: `On ${new Date(sqlToIso(at)).toUTCString().slice(0, 22)} UTC${moved ? ` (was ${new Date(sqlToIso(prevAt)).toUTCString().slice(0, 22)} UTC)` : ''}`,
+      body: `On ${fmtIst(sqlToIso(at))}${moved ? ` (was ${fmtIst(sqlToIso(prevAt))})` : ''}`,
       link: `/consultant/leads?lead=${lead.id}`,
     })
   }

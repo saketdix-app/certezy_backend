@@ -2,6 +2,7 @@
 
 import nodemailer from 'nodemailer'
 import env from '../config/env.js'
+import { fmtIst } from './ist.js'
 
 const transporter = nodemailer.createTransport({
   host: env.smtp.host,
@@ -98,7 +99,7 @@ const sendDiscountMail = (
           }
           <a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px">Claim offer &amp; pay</a>
           <p style="margin:18px 0 0;font-size:13px;color:#64748b">
-            Valid until ${new Date(expiresAt).toUTCString()}. Sign in or create your account with
+            Valid until ${fmtIst(expiresAt)}. Sign in or create your account with
             <b>${to}</b> to use this offer — it works only for this email address.
           </p>
           <p style="margin:12px 0 0;font-size:12px;color:#94a3b8">If the button doesn't work, open: ${link}</p>
@@ -178,7 +179,7 @@ const sendContactReplyMail = (to, { name, subject, originalMessage, receivedAt, 
           <span style="color:#64748b">CERTEZY E-LEARNING PVT LTD · ${env.supportEmail}</span></p>
         <div style="margin-top:24px;padding:12px 16px;border-left:3px solid #cbd5e1;color:#64748b;font-size:13px">
           <p style="margin:0 0 6px">Your message${
-            receivedAt ? ` of ${new Date(receivedAt).toUTCString().replace(/ GMT$/, ' UTC')}` : ''
+            receivedAt ? ` of ${fmtIst(receivedAt)}` : ''
           }:</p>
           <div>${escapeHtml(originalMessage)}</div>
         </div>

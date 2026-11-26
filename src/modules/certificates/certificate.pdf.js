@@ -32,8 +32,9 @@ export const formatCertificateName = (name = '') =>
     )
     .join(' ')
 
+// Moments (issue date) in India time
 const formatDate = (d) =>
-  new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
 
 // Calendar dates (training period) are stored as dates, read back as UTC midnight
 const formatDay = (d) =>
