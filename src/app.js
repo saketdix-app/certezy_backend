@@ -29,6 +29,7 @@ import certificateRoutes from './modules/certificates/certificates.routes.js'
 import reviewRoutes from './modules/reviews/reviews.routes.js'
 import adminRoutes from './modules/admin/admin.routes.js'
 import teamRoutes from './modules/team/team.routes.js'
+import backupRoutes from './modules/backups/backups.routes.js'
 import crmRoutes from './modules/crm/crm.routes.js'
 import notificationRoutes from './modules/notifications/notifications.routes.js'
 import { admin as integrationRoutes, webhooks as webhookRoutes } from './modules/integrations/integrations.routes.js'
@@ -58,6 +59,7 @@ const ROUTES = [
   ['/certificates', certificateRoutes],
   ['/reviews', reviewRoutes],
   ['/admin/team', teamRoutes],
+  ['/admin/backups', backupRoutes],
   ['/crm', crmRoutes],
   ['/notifications', notificationRoutes],
   ['/integrations', integrationRoutes],

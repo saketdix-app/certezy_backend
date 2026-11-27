@@ -1,7 +1,8 @@
 // src/utils/upload.js
 // Thin wrapper around AWS S3 used for admin uploads, certificates and invoices.
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand, HeadObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
+import fs from 'node:fs'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import env from '../config/env.js'
 
@@ -131,6 +132,25 @@ const presignPrivateGet = async ({ key, expiresIn = 600, downloadName, mimeType 
     { expiresIn }
   )
 
+/** Upload a local file as a private object (streamed, not read into memory). */
+const uploadPrivateFile = async ({ key, filePath, size, mimeType }) => {
+  await getClient().send(
+    new PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: fs.createReadStream(filePath), ContentLength: size, ContentType: mimeType, ...aclFor(false) })
+  )
+}
+
+/** Objects under a prefix: [{ key, size, lastModified (ms) }]. */
+const listPrivateFiles = async (prefix) => {
+  const out = []
+  let token
+  do {
+    const r = await getClient().send(new ListObjectsV2Command({ Bucket: cfg.bucket, Prefix: prefix, ContinuationToken: token }))
+    for (const o of r.Contents ?? []) out.push({ key: o.Key, size: Number(o.Size ?? 0), lastModified: new Date(o.LastModified).getTime() })
+    token = r.IsTruncated ? r.NextContinuationToken : undefined
+  } while (token)
+  return out
+}
+
 // ── Connectivity check for the admin status endpoint ──────────────────────
 const checkStorage = async () => {
   const info = {
@@ -160,6 +180,9 @@ export {
   isConfigured,
   isOwnUploadUrl,
   presignPrivatePut,
+  uploadPrivateFile,
+  listPrivateFiles,
+  deleteFile as deletePrivateFile,
   presignPrivateGet,
   objectSize,
 }
