@@ -1018,6 +1018,31 @@ const STEPS = [
       return true
     },
   },
+  {
+    name: 'db_backups (daily database backups in S3; newest 7 kept)',
+    run: async () => {
+      if (await tableExists('db_backups')) return false
+      await pool.query(`
+        CREATE TABLE db_backups (
+          id           INT AUTO_INCREMENT PRIMARY KEY,
+          s3_key       VARCHAR(300) NOT NULL,
+          status       VARCHAR(20) NOT NULL DEFAULT 'running',
+          trigger_type VARCHAR(20) NOT NULL DEFAULT 'scheduled',
+          triggered_by INT NULL,
+          size_bytes   BIGINT NULL,
+          tables_count INT NULL,
+          rows_count   BIGINT NULL,
+          duration_ms  INT NULL,
+          error        VARCHAR(500) NULL,
+          started_at   DATETIME NOT NULL,
+          finished_at  DATETIME NULL,
+          deleted_at   DATETIME NULL,
+          INDEX idx_backup_status (status, started_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `)
+      return true
+    },
+  },
 ]
 
 /**

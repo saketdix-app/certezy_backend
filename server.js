@@ -5,6 +5,7 @@ import testConnection, { pool } from './src/config/db.js'
 import runMigrations from './src/config/migrate.js'
 import { primeFxRate } from './src/utils/fx.js'
 import { schedulePurge } from './src/modules/auth/userDeletion.js'
+import { scheduleBackups } from './src/modules/backups/backups.service.js'
 import { connectRedis, client as redisClient } from './src/config/redis.js'
 import './src/jobs/emailWorker.js'
 import './src/jobs/leadIngestWorker.js'
@@ -16,6 +17,7 @@ const start = async () => {
   await runMigrations()
   primeFxRate() // USD→INR for India prices (background)
   schedulePurge() // erase users deleted more than 30 days ago (every 6 h)
+  scheduleBackups() // database backup to S3 once a day; newest 7 kept
   await connectRedis()
 
   const server = app.listen(env.PORT, () => {
