@@ -523,6 +523,11 @@ const schemas = {
     password: Joi.string().max(200).required(),
   }),
   integrationConnect: Joi.object({ password: Joi.string().max(200).required() }),
+  integrationSystemUser: Joi.object({
+    password: Joi.string().max(200).required(),
+    token: Joi.string().trim().min(20).max(2000).required(),
+    page_ids: Joi.array().items(Joi.string().trim().max(40)).max(50).optional(),
+  }),
   integrationOAuth: Joi.object({
     state: Joi.string().max(2000).required(),
     code: Joi.string().max(2000).optional(),

@@ -4,7 +4,7 @@
 import { Worker } from 'bullmq'
 import { connection, enqueueIngest } from './leadIngestQueue.js'
 import { processEvent, syncLinkedIn, syncMeta } from '../modules/integrations/ingest.service.js'
-import { checkMeta, notifyIntegrationAlerts, renewLinkedIn } from '../modules/integrations/oauth.js'
+import { checkMeta, notifyIntegrationAlerts, renewLinkedIn, renewMetaSystemUser } from '../modules/integrations/oauth.js'
 
 const worker = new Worker('leadIngest', async (job) => processEvent(job.data.eventId), { connection, concurrency: 3 })
 
@@ -23,6 +23,8 @@ setInterval(() => syncMeta(enqueueIngest).catch(() => {}), LINKEDIN_EVERY_MS).un
 // …and check Facebook's access dates; then remind the Admins (once a day) about anything expiring
 const renew = async () => {
   await renewLinkedIn().catch((err) => console.error('LinkedIn renewal check failed:', err.message))
+  // Facebook System User tokens that last 60 days: renew in their last 10 days
+  await renewMetaSystemUser().catch((err) => console.error('Facebook System User renewal check failed:', err.message))
   await checkMeta().catch((err) => console.error('Facebook check failed:', err.message))
   await notifyIntegrationAlerts().catch((err) => console.error('Integration alerts failed:', err.message))
 }
