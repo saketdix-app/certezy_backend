@@ -308,8 +308,9 @@ export const teamBoard = async (actor, q = {}) => {
     [start, end]
   )
   const [dailyCalls] = await pool.query(
-    `SELECT DATE_FORMAT(a.created_at + INTERVAL ${IST_OFFSET_MIN} MINUTE, '%Y-%m-%d') AS d, SUM(${CONNECTED}) AS connected
-     FROM lead_activities a WHERE a.type = 'call' AND a.created_at >= ? AND a.created_at < ?
+    `SELECT DATE_FORMAT(a.created_at + INTERVAL ${IST_OFFSET_MIN} MINUTE, '%Y-%m-%d') AS d,
+            COUNT(*) AS calls, SUM(${CONNECTED}) AS connected
+     FROM lead_activities a WHERE a.type = 'call' AND a.actor_id IS NOT NULL AND a.created_at >= ? AND a.created_at < ?
      GROUP BY d ORDER BY d`,
     [start, end]
   )
@@ -346,11 +347,11 @@ export const teamBoard = async (actor, q = {}) => {
   // Every day of the period, zeros included (up to 62 days)
   const series = []
   const L2 = Object.fromEntries(daily.map((r) => [r.d, n(r.leads)]))
-  const C2 = Object.fromEntries(dailyCalls.map((r) => [r.d, n(r.connected)]))
+  const C2 = Object.fromEntries(dailyCalls.map((r) => [r.d, r]))
   if (range.days <= 62) {
     for (let i = 0; i < range.days; i++) {
       const d = new Date(new Date(`${fromDay}T00:00:00Z`).getTime() + i * 86400e3).toISOString().slice(0, 10)
-      series.push({ day: d, leads: L2[d] ?? 0, connected: C2[d] ?? 0 })
+      series.push({ day: d, leads: L2[d] ?? 0, calls: n(C2[d]?.calls), connected: n(C2[d]?.connected) })
     }
   }
   return { period: { from: range.from, to: range.to, timezone: IST }, rows, totals, series }
