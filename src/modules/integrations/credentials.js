@@ -33,6 +33,8 @@ export const FIELDS = {
     { name: 'verify_token', label: 'Webhook verify token', secret: true, env: () => env.integrations.meta.verifyToken },
     // Every Page connected through Connect: [{ id, name, token }] (page_access_token = the first)
     { name: 'pages', internal: true, secret: true, env: none },
+    // Meta Business "System User" token (no 90-day re-login); the Page tokens come from it
+    { name: 'system_user_token', internal: true, secret: true, env: none },
     { name: 'connection', internal: true, env: none },
   ],
   linkedin: [
@@ -150,6 +152,7 @@ export const getCredentials = async (source, opts = {}) => {
           : []),
       appSecret: v.app_secret,
       verifyToken: v.verify_token,
+      systemUserToken: v.system_user_token,
       graphVersion: env.integrations.meta.graphVersion,
       connection: parseConnection(v.connection),
     }
@@ -224,7 +227,7 @@ export const setCredentialValues = async (source, values, actorId) => {
   const touched = Object.keys(values)
   if (!values.connection && touched.some((k) => ['page_access_token', 'access_token'].includes(k))) {
     // Values passed in win over the clean-up (e.g. a new Page list saved with its token)
-    values = { connection: '', ...(source === 'linkedin' && { refresh_token: '' }), ...(source === 'meta' && { pages: '' }), ...values }
+    values = { connection: '', ...(source === 'linkedin' && { refresh_token: '' }), ...(source === 'meta' && { pages: '', system_user_token: '' }), ...values }
   }
   const saved = []
   const cleared = []

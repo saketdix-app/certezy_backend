@@ -18,7 +18,7 @@ import * as whatsapp from './whatsapp.adapter.js'
 import * as linkedinAdapter from './linkedin.adapter.js'
 import { handleInbound, handleStatus } from './whatsapp.service.js'
 import { credentialStatus, getCredentials, saveCredentials, testConnection } from './credentials.js'
-import { chooseConnect, finishConnect, integrationAlerts, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
+import { chooseConnect, connectMetaSystemUser, finishConnect, integrationAlerts, OAUTH_SOURCES, redirectUri, startConnect } from './oauth.js'
 import { linkedInChallengeResponse, verifyLinkedInSignature, verifyMetaSignature } from './signature.js'
 
 export const webhooks = Router()
@@ -209,6 +209,15 @@ admin.post('/:source/oauth', ...managers, validate(schemas.integrationOAuth), as
 admin.post('/:source/oauth/choose', ...managers, validate(schemas.integrationOAuthChoose), async (req, res, next) => {
   try {
     return success(res, { data: await chooseConnect(req, req.params.source, req.body) })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Facebook: connect with a Meta Business System User token (no 90-day re-login)
+admin.post('/meta/system-user', ...managers, validate(schemas.integrationSystemUser), async (req, res, next) => {
+  try {
+    return success(res, { data: await connectMetaSystemUser(req, req.body) })
   } catch (err) {
     next(err)
   }

@@ -156,7 +156,7 @@ const metaPost = async (path, params, fetchImpl) => {
 const names = (list) => list.map((x) => `"${x.name}"`).join(', ')
 
 /** Save the chosen Pages (one or more) and subscribe each to lead events. */
-const finishMeta = async (req, pages, fetchImpl) => {
+const finishMeta = async (req, pages, fetchImpl, { systemUser = null } = {}) => {
   const creds = await getCredentials('meta', { fresh: true })
   const verifyToken = creds.verifyToken || crypto.randomBytes(16).toString('hex')
   await setCredentialValues(
@@ -165,12 +165,20 @@ const finishMeta = async (req, pages, fetchImpl) => {
       page_access_token: pages[0].token,
       pages: JSON.stringify(pages.map(({ id, name, token }) => ({ id, name, token }))),
       verify_token: verifyToken,
+      // Signing in with Facebook replaces a System User connection (and the other way round)
+      system_user_token: systemUser?.token ?? '',
       connection: JSON.stringify({
         pages: pages.map(({ id, name }) => ({ id, name })),
         page_id: pages[0].id, // older code reads these
         page_name: pages[0].name,
         connected_by: req.user.name,
         connected_at: new Date().toISOString(),
+        ...(systemUser && {
+          mode: 'system_user',
+          system_user: systemUser.name,
+          token_expires_at: systemUser.expires_at, // null = never expires
+          auto_renew: Boolean(systemUser.expires_at),
+        }),
       }),
     },
     req.user.id
@@ -197,12 +205,117 @@ const finishMeta = async (req, pages, fetchImpl) => {
   )
   steps.push(hook.ok ? { ok: true, label: 'Webhook pointed at CERTEZY' } : { ok: false, label: `Webhook: ${hook.error}` })
   const health = await checkMeta({ fetchImpl }).catch(() => null)
-  if (health === 'ok') {
+  if (systemUser) {
+    steps.push({
+      ok: true,
+      label: systemUser.expires_at
+        ? `System User token: CERTEZY renews it automatically before ${new Date(systemUser.expires_at).toDateString()} — no Facebook sign-in needed`
+        : 'System User token never expires — no Facebook sign-in needed',
+    })
+  } else if (health === 'ok') {
     const h = (await getCredentials('meta', { fresh: true })).connection?.health
     const ends = [h?.expires_at, h?.data_access_expires_at].filter(Boolean).sort()[0]
     if (ends) steps.push({ ok: true, label: `Facebook allows access until ${new Date(ends).toDateString()} — you'll be reminded a week before` })
   }
   return { source: 'meta', name: pages.map((p) => p.name).join(', '), steps }
+}
+
+// ── Meta: System User token (Business Settings → System users) ──────────
+// A System User belongs to the business, not to a person, so it isn't tied
+// to anyone's password and has no 90-day re-login. Its token either never
+// expires or lasts 60 days; a 60-day one is renewed here automatically.
+
+const LEAD_SCOPES = ['leads_retrieval', 'pages_show_list', 'pages_manage_metadata']
+
+/** What Facebook says about a token (via the batch API, so no token is in a URL). */
+const debugToken = async (token, creds, fetchImpl) => {
+  const res = await fetchImpl(`${graph()}/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      access_token: `${creds.appId}|${creds.appSecret}`,
+      batch: JSON.stringify([{ method: 'GET', relative_url: `debug_token?input_token=${encodeURIComponent(token)}` }]),
+    }),
+  })
+  const first = (await jsonOf(res))?.[0]
+  if (!res.ok || first?.code !== 200) throw fail(502, `Facebook couldn't check the token (${first?.code ?? res.status})`)
+  return JSON.parse(first.body ?? '{}').data ?? {}
+}
+
+const systemUserName = async (token, fetchImpl) => {
+  const res = await fetchImpl(`${graph()}/me?fields=id,name`, { headers: { Authorization: `Bearer ${token}` } })
+  const d = await jsonOf(res)
+  return res.ok ? (d.name ?? 'System User') : 'System User'
+}
+
+/** Super Admin + password, then a System User token → every Page it can manage, connected. */
+export const connectMetaSystemUser = async (req, { token, password, page_ids }, { fetchImpl = fetch } = {}) => {
+  await requireSuper(req, 'meta', 'integration.connect')
+  const creds = await appKeys('meta')
+  try {
+    await reauthenticate(req.user, password)
+  } catch (err) {
+    await audit(req, { action: 'integration.connect', result: 'denied', targetType: 'integration', details: { source: 'meta', mode: 'system_user', reason: 'password' } })
+    throw err
+  }
+  token = String(token ?? '').trim()
+  const d = await debugToken(token, creds, fetchImpl)
+  if (!d.is_valid) throw fail(400, `Facebook says this token isn't valid${d.error?.message ? ` (${d.error.message})` : ''}`)
+  if (d.app_id && String(d.app_id) !== String(creds.appId)) throw fail(400, "This token was made for a different app — generate it for the CERTEZY app (the App ID saved on this card)")
+  const missing = LEAD_SCOPES.filter((s) => !(d.scopes ?? []).includes(s))
+  if (missing.length) throw fail(400, `Generate the token again with these permissions ticked: ${missing.join(', ')}`)
+
+  let pages = await metaPages(token, fetchImpl)
+  if (!pages.length) throw fail(400, 'This System User has no Pages — in Business Settings, assign your Pages to it (Manage Page / leads access), then generate the token again')
+  if (page_ids?.length) {
+    const wanted = new Set(page_ids.map(String))
+    pages = pages.filter((p) => wanted.has(p.id))
+    if (!pages.length) throw fail(400, 'None of the chosen Pages is assigned to this System User')
+  }
+  const expiresAt = Number(d.expires_at) > 0 ? new Date(Number(d.expires_at) * 1000).toISOString() : null
+  const name = await systemUserName(token, fetchImpl)
+  const result = await finishMeta(req, pages, fetchImpl, { systemUser: { token, name, expires_at: expiresAt } })
+  return done(req, { ...result, name: `${result.name} (System User "${name}")` })
+}
+
+const META_RENEW_DAYS = 10
+
+/**
+ * Queue worker, every few hours: a 60-day System User token is exchanged for
+ * a fresh one in its last 10 days, and the Page tokens are fetched again from it.
+ */
+export const renewMetaSystemUser = async ({ fetchImpl = fetch, now = Date.now() } = {}) => {
+  const c = await getCredentials('meta', { fresh: true })
+  const conn = c.connection
+  if (conn?.mode !== 'system_user' || !c.systemUserToken) return 'not_system_user'
+  if (!conn.token_expires_at) return 'never_expires'
+  if ((new Date(conn.token_expires_at).getTime() - now) / 86400e3 > META_RENEW_DAYS) return 'ok'
+  if (!(c.appId && c.appSecret)) return 'not_renewed'
+  try {
+    const token = await metaToken(
+      { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.appSecret, fb_exchange_token: c.systemUserToken, set_token_expires_in_60_days: 'true' },
+      fetchImpl
+    )
+    const d = await debugToken(token, c, fetchImpl)
+    if (!d.is_valid) throw new Error('the new token is not valid')
+    const fresh = await metaPages(token, fetchImpl)
+    const kept = new Set((c.pages ?? []).map((p) => p.id))
+    const pages = fresh.filter((p) => kept.has(p.id))
+    if (!pages.length) throw new Error('the System User no longer has the connected Pages')
+    const expiresAt = Number(d.expires_at) > 0 ? new Date(Number(d.expires_at) * 1000).toISOString() : null
+    await setCredentialValues('meta', {
+      system_user_token: token,
+      page_access_token: pages[0].token,
+      pages: JSON.stringify(pages.map(({ id, name, token: t }) => ({ id, name, token: t }))),
+      connection: JSON.stringify({ ...conn, token_expires_at: expiresAt, auto_renew: Boolean(expiresAt), renewed_at: new Date(now).toISOString(), renew_error: null, alerted_on: null }),
+    })
+    await audit(null, { action: 'integration.token_renewed', targetType: 'integration', details: { source: 'meta', mode: 'system_user' } })
+    return 'renewed'
+  } catch (err) {
+    console.error('Facebook System User token renewal failed:', err.message)
+    await setCredentialValues('meta', { connection: JSON.stringify({ ...conn, renew_error: err.message }) })
+    return 'not_renewed' // the admin header + daily notification take it from here
+  }
 }
 
 // ── LinkedIn ──────────────────────────────────────────────────────────────
@@ -456,7 +569,19 @@ export const integrationAlerts = async ({ now = Date.now() } = {}) => {
 
   const m = await getCredentials('meta')
   const h = m.connection?.health
-  if (m.pageAccessToken && h && (await getIntegration('meta')).enabled) {
+  const sys = m.connection?.mode === 'system_user'
+  if (m.pageAccessToken && sys && (await getIntegration('meta')).enabled) {
+    const ends = m.connection.token_expires_at
+    const days = ends ? daysUntil(ends, now) : Infinity
+    if (h?.valid === false) {
+      out.push({ source: 'meta', level: 'error', message: `The Facebook connection has stopped working (${h.error}). Generate a new System User token and connect it again.` })
+    } else if (days <= 0) {
+      out.push({ source: 'meta', level: 'error', expires_at: ends, message: 'The Facebook System User token has expired, so Facebook leads have stopped. Generate a new one and connect it again.' })
+    } else if (days <= 2 || (days <= WARN_DAYS && m.connection.renew_error)) {
+      // Renewal normally happens 10 days before; only warn if it hasn't worked
+      out.push({ source: 'meta', level: 'warning', expires_at: ends, message: `The Facebook System User token expires in ${plural(Math.ceil(days))} and couldn't be renewed${m.connection.renew_error ? ` (${m.connection.renew_error})` : ''}. Generate a new one and connect it again.` })
+    }
+  } else if (m.pageAccessToken && h && (await getIntegration('meta')).enabled) {
     const ends = [h.expires_at, h.data_access_expires_at].filter(Boolean).sort()[0]
     if (h.valid === false) {
       out.push({ source: 'meta', level: 'error', message: `The Facebook connection has stopped working (${h.error}). Click Reconnect Facebook.` })
