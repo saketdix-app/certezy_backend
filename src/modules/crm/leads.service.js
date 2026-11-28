@@ -604,6 +604,9 @@ const SORTS = {
   oldest: 'l.created_at ASC, l.id ASC',
 }
 
+/** By consultant numbers a lead list can be narrowed to (see listLeads `focus`). */
+const BOARD_FOCUS = ['overdue', 'quiet', 'talked', 'pay_due']
+
 export const listLeads = async (actor, q = {}) => {
   assertCrmUser(actor)
   const scope = scopeFor(actor)
@@ -666,10 +669,21 @@ export const listLeads = async (actor, q = {}) => {
     if (q.contact === 'quiet') where.push(`${OPEN_STAGES_SQL} AND NOT ${talked} AND da.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY)`)
     if (q.contact === 'never') where.push(`NOT ${talked})`)
   }
+  // By consultant: the leads behind one of the board's numbers, counted exactly
+  // as the board counts them (Backlog included, so "All" doesn't hide them)
+  const focus = BOARD_FOCUS.includes(q.focus) ? q.focus : null
+  if (focus) {
+    const talked7d = `EXISTS (SELECT 1 FROM lead_activities fa WHERE fa.lead_id = l.id AND fa.type IN (${DISCUSSION_IN})
+                      AND fa.created_at >= UTC_TIMESTAMP() - INTERVAL 7 DAY)`
+    if (focus === 'overdue') add(`${OPEN_STAGES_SQL} AND l.next_follow_up_at < ?`, todayBounds().start)
+    if (focus === 'quiet') where.push(`${OPEN_STAGES_SQL} AND NOT ${talked7d}`)
+    if (focus === 'talked') where.push(talked7d)
+    if (focus === 'pay_due') where.push(PAYMENT_ALERT_SQL)
+  }
 
   // Backlog leads live only in the Backlog tab: "All" leaves them out (a search still finds them)
   const ALL_TAB_SQL = "l.stage <> 'backlog'"
-  const allTab = !(q.stage && STAGES.includes(q.stage)) && !q.search
+  const allTab = !(q.stage && STAGES.includes(q.stage)) && !q.search && !focus
 
   // Admins: every matching lead id (for "select all N" bulk moves)
   if (q.ids_only && isManager(actor)) {
