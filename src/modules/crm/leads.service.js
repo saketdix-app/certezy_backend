@@ -632,7 +632,8 @@ export const listLeads = async (actor, q = {}) => {
     if (q.owner_id === 'unassigned') where.push('l.owner_id IS NULL')
     else add('l.owner_id = ?', q.owner_id)
   }
-  if (q.follow_up === 'overdue') add('l.next_follow_up_at < UTC_TIMESTAMP()')
+  // Overdue = open lead with a follow-up in the past (same rule as the team board)
+  if (q.follow_up === 'overdue') where.push(`${OPEN_STAGES_SQL} AND l.next_follow_up_at < UTC_TIMESTAMP()`)
   // Coordinator filter: Admins and consultants (among their own leads)
   if (!isCoordinator(actor) && q.exam_coordinator_id) {
     if (q.exam_coordinator_id === 'none') where.push('l.exam_coordinator_id IS NULL')
@@ -669,7 +670,8 @@ export const listLeads = async (actor, q = {}) => {
 
   // Backlog leads live only in the Backlog tab: "All" leaves them out (a search still finds them)
   const ALL_TAB_SQL = "l.stage <> 'backlog'"
-  const allTab = !(q.stage && STAGES.includes(q.stage)) && !q.search
+  // with_backlog=1 (team board drill-downs): "All" keeps backlog leads so the list matches the board's number
+  const allTab = !(q.stage && STAGES.includes(q.stage)) && !q.search && q.with_backlog !== '1'
 
   // Admins: every matching lead id (for "select all N" bulk moves)
   if (q.ids_only && isManager(actor)) {
