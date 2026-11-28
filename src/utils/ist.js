@@ -13,3 +13,9 @@ export const fmtIstTime = (d) =>
 
 /** "26/11/2026" (date only, India time) */
 export const fmtIstDate = (d) => new Date(d).toLocaleDateString('en-IN', { timeZone: IST })
+
+/** Start of the India-time month `back` months before the one `now` is in, as a UTC Date. */
+export const istMonthStart = (now = new Date(), back = 0) => {
+  const ist = new Date(now.getTime() + 330 * 60e3)
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - back, 1) - 330 * 60e3)
+}

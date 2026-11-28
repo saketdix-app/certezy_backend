@@ -13,6 +13,7 @@ import {
 import axios from 'axios'
 import crypto from 'crypto'
 import env from '../../config/env.js'
+import { revenueBreakdown } from './revenue.js'
 import * as queries from './payments.queries.js'
 import * as courseQueries from '../courses/courses.queries.js'
 import { createEnrollment } from '../enrollments/enrollments.service.js'
@@ -595,9 +596,7 @@ const getAllPayments = async ({ page = 1, limit = 20, status } = {}) => {
 }
 
 // ── Admin — Revenue Stats ──────────────────────────────────────────────────
-const getRevenueStats = async () => {
-  return await queries.getRevenueStats()
-}
+const getRevenueStats = () => revenueBreakdown()
 
 export {
   checkGateways,

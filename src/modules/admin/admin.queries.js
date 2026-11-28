@@ -2,6 +2,7 @@
 
 import { STAFF_PERMISSIONS } from '../../constants.js'
 import { pool } from '../../config/db.js'
+import { istMonthStart } from '../../utils/ist.js'
 
 // ── Get permissions by user_id ─────────────────────────────────────────────
 const getPermissionsByUserId = (user_id) =>
@@ -42,11 +43,13 @@ const getDashboardStats = async () => {
     `SELECT COUNT(*) AS total FROM courses WHERE status = 'published'`
   )
   const [enrollmentCount] = await pool.query(`SELECT COUNT(*) AS total FROM enrollments`)
-  const [revenueSum] = await pool.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'success'`
-  )
-  const [thisMonthRevenue] = await pool.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'success' AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')`
+  // Revenue is not here: it is Super Admin only (GET /payments/admin/revenue).
+  // Growth = what was added this India-time month (real numbers, not estimates)
+  const monthStart = istMonthStart()
+  const [[added]] = await pool.query(
+    `SELECT (SELECT COUNT(*) FROM users WHERE created_at >= ?) AS users,
+            (SELECT COUNT(*) FROM courses WHERE status = 'published' AND created_at >= ?) AS courses`,
+    [monthStart, monthStart]
   )
   const [pendingReviews] = await pool.query(`SELECT COUNT(*) AS total FROM reviews WHERE is_approved = 0`)
   const [pendingPayments] = await pool.query(
@@ -74,8 +77,8 @@ const getDashboardStats = async () => {
   const totalCourses = Number(courseCount[0]?.total || 0)
   const publishedCourses = Number(publishedCourseCount[0]?.total || 0)
   const totalEnrollments = Number(enrollmentCount[0]?.total || 0)
-  const totalRevenue = Number(revenueSum[0]?.total || 0)
-  const thisMonthRev = Number(thisMonthRevenue[0]?.total || 0)
+  const newUsers = Number(added?.users || 0)
+  const newCourses = Number(added?.courses || 0)
   const pendingRev = Number(pendingReviews[0]?.total || 0)
   const pendingPay = Number(pendingPayments[0]?.total || 0)
 
@@ -90,24 +93,16 @@ const getDashboardStats = async () => {
     publishedCourses,
     total_enrollments: totalEnrollments,
     totalEnrollments,
-    total_revenue: totalRevenue,
-    totalRevenue,
-    this_month_revenue: thisMonthRev,
-    thisMonthRevenue: thisMonthRev,
     pending_reviews: pendingRev,
     pendingReviews: pendingRev,
     pending_payments: pendingPay,
     pendingPayments: pendingPay,
     recent_enrollments: recentEnrollments,
     recentEnrollments,
-    user_growth: 12,
-    userGrowth: 12,
-    active_user_growth: 8,
-    activeUserGrowth: 8,
-    revenue_growth: 15,
-    revenueGrowth: 15,
-    course_growth: 5,
-    courseGrowth: 5,
+    new_users_this_month: newUsers,
+    newUsersThisMonth: newUsers,
+    new_courses_this_month: newCourses,
+    newCoursesThisMonth: newCourses,
   }
 }
 
