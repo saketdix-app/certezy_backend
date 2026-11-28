@@ -235,6 +235,46 @@ const assignCourses = async ({ user_id, course_ids, note, assigned_by }) => {
   return { user: { id: user.id, name: user.name, email: user.email }, assigned, skipped }
 }
 
+// ── Admin — the same courses to many students at once ─────────────────────
+// Students by id and/or email (max 200 in all). Each student is handled on its
+// own: a deactivated account or an unknown email is reported for that row and
+// the rest still go through. Each student gets one email listing their new courses.
+const assignCoursesBulk = async ({ user_ids = [], emails = [], course_ids, note, assigned_by }) => {
+  const ids = [...new Set(user_ids.map(Number))]
+  const rows = []
+  const seen = new Set(ids)
+  for (const raw of [...new Set(emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean))]) {
+    const u = await authQueries.findByEmail(raw)
+    if (!u) {
+      rows.push({ email: raw, error: 'No account with this email' })
+      continue
+    }
+    if (!seen.has(u.id)) {
+      seen.add(u.id)
+      ids.push(u.id)
+    }
+  }
+  if (ids.length > 200) throw httpError('Assign to at most 200 students at a time', 400)
+
+  for (const user_id of ids) {
+    try {
+      const r = await assignCourses({ user_id, course_ids, note, assigned_by })
+      rows.push({ user: r.user, assigned: r.assigned, skipped: r.skipped })
+    } catch (err) {
+      if (!err.statusCode || err.statusCode >= 500) throw err
+      const u = await authQueries.findById(user_id)
+      rows.push({ user: u ? { id: u.id, name: u.name, email: u.email } : { id: user_id }, error: err.message })
+    }
+  }
+  const totals = {
+    students: rows.filter((r) => r.user && !r.error).length,
+    assigned: rows.reduce((n, r) => n + (r.assigned?.length ?? 0), 0),
+    skipped: rows.reduce((n, r) => n + (r.skipped?.length ?? 0), 0),
+    failed: rows.filter((r) => r.error).length,
+  }
+  return { totals, results: rows }
+}
+
 // ── Admin — a user's enrollments, with how each was granted ───────────────
 const getUserEnrollments = async (user_id) => {
   const [rows] = await queries.getUserEnrollmentsDetailed(user_id)
@@ -275,6 +315,7 @@ export {
   getEnrollmentStats,
   exportEnrollmentsCsv,
   assignCourses,
+  assignCoursesBulk,
   getUserEnrollments,
   revokeEnrollment,
   getAssignableCourses,

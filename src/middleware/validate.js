@@ -672,6 +672,13 @@ const schemas = {
     handover: Joi.object().unknown(true).optional(),
   }),
   createSubAdmin: createSubAdminSchema,
+  // Many students (by id and/or email) × many courses
+  assignCoursesBulk: Joi.object({
+    user_ids: Joi.array().items(Joi.number().integer().positive()).max(200).default([]),
+    emails: Joi.array().items(Joi.string().trim().lowercase().max(255)).max(200).default([]),
+    course_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).required(),
+    note: Joi.string().trim().max(255).allow('', null).optional(),
+  }).custom((v, h) => (v.user_ids.length + v.emails.length ? v : h.message('Choose at least one student'))),
   assignCourses: Joi.object({
     user_id: Joi.number().integer().positive().required(),
     course_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(50).required(),

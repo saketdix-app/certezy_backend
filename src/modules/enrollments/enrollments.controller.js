@@ -2,6 +2,7 @@
 
 import * as service from './enrollments.service.js'
 import { success } from '../../utils/response.js'
+import { audit } from '../../utils/audit.js'
 
 // ── GET /enrollments — my enrolled courses ─────────────────────────────────
 const getMyEnrollments = async (req, res, next) => {
@@ -80,6 +81,29 @@ const exportEnrollments = async (req, res, next) => {
   }
 }
 
+// ── POST /enrollments/admin/assign-bulk — the same courses to many students ─
+const assignCoursesBulk = async (req, res, next) => {
+  try {
+    const { user_ids, emails, course_ids, note } = req.body
+    const result = await service.assignCoursesBulk({ user_ids, emails, course_ids, note, assigned_by: req.user.id })
+    const { assigned, students } = result.totals
+    await audit(req, {
+      action: 'enrollment.assign_bulk',
+      targetType: 'course',
+      details: { course_ids, students, assigned, skipped: result.totals.skipped, failed: result.totals.failed },
+    })
+    return success(res, {
+      statusCode: assigned ? 201 : 200,
+      message: assigned
+        ? `${assigned} course access${assigned > 1 ? 'es' : ''} given to ${students} student${students === 1 ? '' : 's'}`
+        : 'No new courses assigned',
+      data: result,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
 // ── POST /enrollments/admin/assign — assign courses free of cost ──────────
 const assignCourses = async (req, res, next) => {
   try {
@@ -136,6 +160,7 @@ export {
   getEnrollmentStats,
   exportEnrollments,
   assignCourses,
+  assignCoursesBulk,
   getUserEnrollments,
   revokeEnrollment,
   getAssignableCourses,

@@ -21,6 +21,7 @@ const canAssign = [authenticate, role('admin', 'sub_admin'), permission('can_ass
 router.get('/admin/courses', ...canAssign, controller.getAssignableCourses)
 router.get('/admin/user/:userId', ...canAssign, controller.getUserEnrollments)
 router.post('/admin/assign', ...canAssign, validate(schemas.assignCourses), controller.assignCourses)
+router.post('/admin/assign-bulk', ...canAssign, validate(schemas.assignCoursesBulk), controller.assignCoursesBulk)
 router.delete('/admin/:id', ...canAssign, controller.revokeEnrollment)
 
 // ─── STUDENT ──────────────────────────────────────────────────
