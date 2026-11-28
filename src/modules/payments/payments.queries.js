@@ -101,30 +101,6 @@ const countPayments = ({ status }) => {
   return pool.query(`SELECT COUNT(*) AS total FROM payments p ${where}`, values)
 }
 
-// ── Admin — revenue statistics ─────────────────────────────────────────────
-const getRevenueStats = async () => {
-  const [totalRes] = await pool.query(
-    `SELECT COALESCE(SUM(amount), 0) AS total_revenue FROM payments WHERE status = 'success'`
-  )
-  const [monthlyRes] = await pool.query(
-    `SELECT 
-       DATE_FORMAT(created_at, '%b') AS month,
-       DATE_FORMAT(created_at, '%Y-%m') AS period,
-       COALESCE(SUM(amount), 0) AS revenue
-     FROM payments
-     WHERE status = 'success' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-     GROUP BY period, month
-     ORDER BY period ASC`
-  )
-
-  const totalRevenue = Number(totalRes[0]?.total_revenue || 0)
-  return {
-    total_revenue_usd: totalRevenue,
-    total_revenue: totalRevenue,
-    monthly_revenue: monthlyRes || [],
-  }
-}
-
 export {
   createPayment,
   getPaymentById,
@@ -134,6 +110,5 @@ export {
   getPaymentsByUserId,
   getAllPayments,
   countPayments,
-  getRevenueStats,
   setGatewayOrderId,
 }
